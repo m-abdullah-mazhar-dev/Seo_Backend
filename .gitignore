@@ -1,6 +1,6 @@
 venv/
 # Byte-compiled / optimized / DLL files
-seo_service/__pycache__/
+__pycache__/
 *.py[cod]
 *.so
 
