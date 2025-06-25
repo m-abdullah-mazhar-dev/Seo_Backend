@@ -6,7 +6,8 @@ from.serializers import *
 from rest_framework.response import Response
 from rest_framework import status
 import base64 , requests
-
+from datetime import timedelta
+from django.utils import timezone
 
 
 
@@ -221,3 +222,56 @@ class VerifyWordPressConnectionAPI(APIView):
 
         except RequestException as e:
             return Response({"error": "Connection failed.", "details": str(e)}, status=500)
+
+
+class SubmitServicePageAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        page_url = request.data.get("page_url")
+        blog_required = request.data.get("blog_required", False)
+
+        if not page_url:
+            return Response({"error": "Page URL is required."}, status=400)
+
+        # Check if user has connected WordPress
+        try:
+            wp_conn = user.wordpress_connection
+        except WordPressConnection.DoesNotExist:
+            return Response({"error": "User has not connected WordPress."}, status=400)
+
+        # Create the Service Page
+        service_page = ServicePage.objects.create(
+            user=user,
+            wordpress_connection=wp_conn,
+            page_url=page_url,
+            blog_required=blog_required
+        )
+
+        # Get interval from user's package
+        onboarding_form = OnboardingForm.objects.filter(user=user).first()
+        if not onboarding_form or not onboarding_form.package:
+            return Response({"error": "User package not found."}, status=400)
+
+        interval_days = onboarding_form.package.interval
+        next_run = timezone.now() + timedelta(days=interval_days)
+
+        # Create SEO Optimization Task
+        SEOTask.objects.create(
+            user=user,
+            service_page=service_page,
+            task_type="seo_optimization",
+            next_run=next_run
+        )
+
+        # Create Blog Writing Task (if blog_required)
+        if blog_required:
+            SEOTask.objects.create(
+                user=user,
+                service_page=service_page,
+                task_type="blog_writing",
+                next_run=next_run
+            )
+
+        return Response({"message": "Service Page & Tasks created successfully."})
