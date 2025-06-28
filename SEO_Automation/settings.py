@@ -186,3 +186,40 @@ STRIPE_SECRET_KEY = 'sk_test_51QOxwTA8cYNy6kmAPgM0WRmFIuGimW53AFkWP0EsDhQh8hJguP
 STRIPE_PUBLIC_KEY = 'pk_test_...'  # Optional for frontend
 STRIPE_WEBHOOK_SECRET = 'whsec_e7c846c5dab294c1efb3d832ee1c8550dd13c23782ca25c701d5498c9bd31051'
 ALLOWED_HOSTS = ['*']
+AI_API_DOMAIN = "http://51.21.149.16:5000"
+
+
+# Celery
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Karachi'
+
+INSTALLED_APPS += ['django_celery_beat']
+
+import logging
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '[%(asctime)s] %(levelname)s:%(name)s:%(message)s'
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard'
+        },
+    },
+    'loggers': {
+        '': {  # root logger
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}

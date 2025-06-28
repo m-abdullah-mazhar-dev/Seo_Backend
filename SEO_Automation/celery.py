@@ -1,0 +1,22 @@
+import os
+from celery import Celery
+from celery.schedules import crontab
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'SEO_Automation.settings')
+
+app = Celery('SEO_Automation')
+app.config_from_object('django.conf:settings', namespace='CELERY')
+app.autodiscover_tasks()
+
+# Timezone configuration
+app.conf.enable_utc = False
+app.conf.timezone = 'Asia/Karachi'
+
+# Beat Schedule Definition
+app.conf.beat_schedule = {
+    'process-due-seo-tasks-every-minute': {
+        'task': 'seo_services.tasks.process_due_seo_tasks',
+        'schedule': crontab(),  # Runs every minute
+        'args': (),  # You can pass arguments if needed
+    },
+}
