@@ -32,11 +32,22 @@ class Service(models.Model):
 class Keyword(models.Model):
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='keywords')
     keyword = models.CharField(max_length=100)
+    clicks = models.PositiveIntegerField(default=0)
+    impressions = models.PositiveIntegerField(default=0)
+
+    @property
+    def ctr(self):
+        if self.impressions == 0:
+            return 0.0
+        return round((self.clicks / self.impressions) * 100, 2)
 
 
 class ServiceArea(models.Model):
     onboarding_form = models.ForeignKey(OnboardingForm, on_delete=models.CASCADE, related_name='service_areas')
     area_name = models.CharField(max_length=200)
+    description = models.TextField(null=True, blank=True)
+    posted_on = models.DateTimeField(auto_now_add=True)
+    clicks = models.PositiveIntegerField(default=0)
 
 
 class BusinessLocation(models.Model):
@@ -102,6 +113,7 @@ class Blog(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True, null=True)
     content = models.TextField()  # This will be the generated_content
+    category = models.CharField(max_length=100, null=True, blank=True)  # Optional
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

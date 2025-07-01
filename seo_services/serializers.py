@@ -200,3 +200,32 @@ class OnBoardingFormSerializer(serializers.ModelSerializer):
         for keyword_id, keyword in existing_keywords.items():
             if keyword_id not in kept_keyword_ids:
                 keyword.delete()
+
+class ServiceAreaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceArea
+        fields = ['area_name', 'description', 'posted_on', 'clicks']
+
+
+class KeywordSerializer(serializers.ModelSerializer):
+    ctr = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Keyword
+        fields = ['keyword', 'clicks', 'impressions', 'ctr']
+
+    def get_ctr(self, obj):
+        return obj.ctr
+
+
+class BlogSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+    category = serializers.CharField(source="seo_task.task_type", read_only=True)
+
+    class Meta:
+        model = Blog
+        fields = ['title', 'content', 'category', 'image']
+
+    def get_image(self, obj):
+        image = obj.images.first()
+        return image.image_url if image else None

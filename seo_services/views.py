@@ -325,3 +325,43 @@ def run_blog_writing(task):
         task.status = "failed"
         task.ai_response_payload = {"error": str(e)}
         task.save()
+
+
+
+# Get Apis ---------------------------
+class MyServiceAreasView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        onboarding = request.user.onboardingform.first()
+        if not onboarding:
+            return Response({"success": False, "message": "Onboarding not found.", "data": []})
+
+        service_areas = onboarding.service_areas.all()
+        serializer = ServiceAreaSerializer(service_areas, many=True)
+        return Response({"success": True, "message": "Service areas retrieved successfully.", "data": serializer.data})
+
+
+class MyKeywordsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        onboarding = request.user.onboardingform.first()
+        if not onboarding:
+            return Response({"success": False, "message": "Onboarding not found.", "data": []})
+
+        keywords = Keyword.objects.filter(service__onboarding_form=onboarding)
+        serializer = KeywordSerializer(keywords, many=True)
+        return Response({"success": True, "message": "Keywords retrieved successfully.", "data": serializer.data})
+
+
+class MyBlogsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        blogs = Blog.objects.filter(seo_task__user=request.user)
+        serializer = BlogSerializer(blogs, many=True)
+        return Response({"success": True, "message": "Blogs retrieved successfully.", "data": serializer.data})
+    
+    
+# ----------------

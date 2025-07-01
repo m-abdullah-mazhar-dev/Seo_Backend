@@ -8,5 +8,9 @@ urlpatterns = [
     path('verify_wp_connection/', VerifyWordPressConnectionAPI.as_view()),
     path('submit_service_page/', SubmitServicePageAPI.as_view()),
 
+    path('my-service-areas/', MyServiceAreasView.as_view(), name='my-service-areas'),
+    path('my-keywords/', MyKeywordsView.as_view(), name='my-keywords'),
+    path('my-blogs/', MyBlogsView.as_view(), name='my-blogs'),
+
 
 ]
