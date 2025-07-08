@@ -2,6 +2,13 @@ from rest_framework import serializers
 from .models import *
 
 
+class PackageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Package
+        fields = '__all__'
+        read_only_fields = ['stripe_price_id']
+
+
 class KeywordSerialzier(serializers.ModelSerializer):
     class Meta:
         model = Keyword

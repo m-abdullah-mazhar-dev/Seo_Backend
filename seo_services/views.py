@@ -13,11 +13,37 @@ from SEO_Automation import settings
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
 import re
+from .utils import create_stripe_product_and_price
+
 
 logger = logging.getLogger(__name__)
 
+class PackageCreateAPIView(APIView):
+    def post(self, request):
+        serializer = PackageSerializer(data=request.data)
+        if serializer.is_valid():
+            package = serializer.save()
 
+            # You must pass amount in cents, for example: $49.99 = 4999
+            try:
+                amount_cents = int(request.data.get("price_usd", 0)) * 100
+                if amount_cents <= 0:
+                    return Response({"error": "Valid price_usd required"}, status=400)
 
+                product_id, price_id = create_stripe_product_and_price(
+                    package, amount_cents=amount_cents
+                )
+
+                package.stripe_product_id = product_id
+                package.stripe_price_id = price_id
+                package.save()
+
+                return Response(PackageSerializer(package).data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                package.delete()  # Cleanup on error
+                return Response({"error": str(e)}, status=500)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class OnBoardingFormAPIView(APIView):
