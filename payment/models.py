@@ -20,4 +20,4 @@ class UserSubscription(models.Model):
     current_period_end = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"{self.user.username} - {self.status}"
+        return f"{self.user.first_name} - {self.status}"

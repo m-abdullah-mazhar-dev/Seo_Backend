@@ -142,3 +142,47 @@ def upload_blog_to_wordpress(blog, wp_conn):
         logger.info("✅ Blog uploaded to WordPress successfully.")
     else:
         logger.error(f"❌ Failed to upload blog: {response.text}")
+
+
+
+def upload_service_page_to_wordpress(service_page, optimized_html):
+    wp_conn = service_page.wordpress_connection
+    logger = logging.getLogger(__name__)
+
+    headers = {
+        'Authorization': f'Basic {wp_conn.access_token}',
+        'Content-Type': 'application/json',
+    }
+
+    # Parse title and content
+    soup = BeautifulSoup(optimized_html, "html.parser")
+    title = soup.title.string.strip() if soup.title else "Service Page"
+    content_body = soup.body if soup.body else optimized_html
+    content_html = str(content_body) if hasattr(content_body, 'prettify') else content_body
+
+    slug = slugify(title)
+
+    page_data = {
+        "title": title,
+        "slug": slug,
+        "content": f"<div>{content_html}</div>",
+        "status": "publish"
+    }
+
+    try:
+        # Upload or update page (naively assumes new upload)
+        response = requests.post(
+            f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/pages",
+            headers=headers,
+            json=page_data
+        )
+
+        logger.info(f"🔼 WordPress Page Upload Response: ")
+
+        if response.status_code in [200, 201]:
+            logger.info("✅ Service page content uploaded successfully.")
+        else:
+            logger.error(f"❌ Failed to upload service page content: {response.text}")
+
+    except Exception as e:
+        logger.exception(f"❌ Exception during service page upload: {str(e)}")

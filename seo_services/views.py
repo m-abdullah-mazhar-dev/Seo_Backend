@@ -353,6 +353,100 @@ def run_blog_writing(task):
         task.save()
 
 
+def run_seo_optimization(task):
+    logger = logging.getLogger(__name__)
+    try:
+        logger.info(f"🚀 Running SEO optimization task for Task ID {task.id}")
+        service_page = task.service_page
+        user = task.user
+
+        onboarding = OnboardingForm.objects.filter(user=user).first()
+        if not onboarding:
+            logger.warning("⚠️ No onboarding form found.")
+            task.status = "failed"
+            task.save()
+            return
+
+        # 🔑 Get all keywords related to services for this user
+        keywords = Keyword.objects.filter(
+            service__onboarding_form=onboarding
+        ).values_list("keyword", flat=True)
+
+        if not keywords:
+            logger.warning("⚠️ No keywords found for SEO optimization.")
+            task.status = "failed"
+            task.save()
+            return
+
+        # 🌐 Fetch current HTML content from service page URL
+        try:
+            page_response = requests.get(service_page.page_url, timeout=20)
+            page_response.raise_for_status()
+            page_content = page_response.text
+        except Exception as e:
+            logger.exception(f"❌ Failed to fetch page content: {str(e)}")
+            task.status = "failed"
+            task.ai_response_payload = {"error": str(e)}
+            task.save()
+            return
+
+        # 📡 Send to optimization API
+        api_payload = {
+            "keywords": list(keywords),
+            "content": page_content,
+        }
+
+        api_response = requests.post(
+            f"{settings.AI_API_DOMAIN}/optimize_blog",
+            json=api_payload,
+            timeout=60
+        )
+
+        if api_response.status_code != 200:
+            logger.error(f"❌ API response error: {api_response.text}")
+            task.status = "failed"
+            task.ai_request_payload = api_payload
+            task.ai_response_payload = {"error": api_response.text}
+            task.save()
+            return
+
+        optimized_data = api_response.json()
+        optimized_content = optimized_data.get("optimizedBlog")
+        logger.info("📝 optimized content: %s", optimized_content)
+
+        if not optimized_content:
+            logger.warning("⚠️ No optimized content received.")
+            task.status = "failed"
+            task.save()
+            return
+
+        # ✅ Save optimized content
+        task.optimized_content = optimized_content
+        task.ai_request_payload = api_payload
+        task.ai_response_payload = optimized_data
+        task.status = "completed"
+        task.last_run = timezone.now()
+        task.next_run = timezone.now() + timedelta(days=onboarding.package.interval if onboarding.package else 7)
+        task.save()
+
+        logger.info(f"✅ SEO Optimization Task {task.id} completed and saved.")
+
+        try:
+            upload_service_page_to_wordpress(task.service_page, task.optimized_content)
+        
+        except Exception as e:
+            logger.exception(f"❌ Wordpress blog upload failed: {str(e)}")
+
+        
+
+    except Exception as e:
+        logger.exception(f"❌ Exception in SEO Optimization task: {str(e)}")
+        task.status = "failed"
+        task.ai_response_payload = {"error": str(e)}
+        task.save()
+
+
+
 
 # Get Apis ---------------------------
 class MyServiceAreasView(APIView):

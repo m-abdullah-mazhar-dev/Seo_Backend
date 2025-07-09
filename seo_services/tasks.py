@@ -24,7 +24,7 @@ import requests
 from celery import shared_task
 from django.utils import timezone
 from .models import SEOTask, OnboardingForm, Keyword, Blog, BlogImage
-from .views import run_blog_writing  # or move logic here if you prefer
+from .views import run_blog_writing, run_seo_optimization  # or move logic here if you prefer
 from datetime import timedelta
 from django.conf import settings
 
@@ -42,8 +42,8 @@ def process_due_seo_tasks():
         logger.info(f"📌 Processing Task ID {task.id} for user {task.user.email}")
         try:
             if task.task_type == 'seo_optimization':
-                logger.info("⏭️ Skipping SEO Optimization task")
-                continue
+                logger.info("⏭️ Running SEO Optimization task")
+                run_seo_optimization(task)
             elif task.task_type == 'blog_writing':
                 logger.info("✍️ Running blog writing task...")
                 run_blog_writing(task)
