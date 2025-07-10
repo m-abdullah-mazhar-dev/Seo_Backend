@@ -234,6 +234,15 @@ class SubmitServicePageAPI(APIView):
                 task_type="blog_writing",
                 next_run=next_run
             )
+        
+        # ✅ Add Keyword Optimization Task
+        SEOTask.objects.create(
+            user=user,
+            service_page=service_page,
+            task_type="keyword_optimization",
+            next_run=next_run
+        )
+
 
         return Response({"message": "Service Page & Tasks created successfully."})
 
@@ -441,6 +450,91 @@ def run_seo_optimization(task):
 
     except Exception as e:
         logger.exception(f"❌ Exception in SEO Optimization task: {str(e)}")
+        task.status = "failed"
+        task.ai_response_payload = {"error": str(e)}
+        task.save()
+
+def run_keyword_optimization(task):
+    logger = logging.getLogger(__name__)
+    logger.info("🔍 Running keyword optimization task...")
+
+    try:
+        user = task.user
+        onboarding = OnboardingForm.objects.filter(user=user).first()
+        if not onboarding:
+            logger.warning(f"⚠️ No onboarding form found for user {user.email}")
+            task.status = "failed"
+            task.save()
+            return
+
+        services = onboarding.services.all()
+        if not services:
+            logger.warning(f"⚠️ No services found for onboarding form {onboarding.id}")
+            task.status = "failed"
+            task.save()
+            return
+
+        for service in services:
+            keywords = list(service.keywords.values_list("keyword", flat=True))
+            if not keywords:
+                logger.warning(f"⚠️ No keywords found for service {service.id}")
+                continue
+
+            ai_payload = {"keywords": keywords}
+            try:
+                response = requests.post(
+                    f"{settings.AI_API_DOMAIN}/keyword_suggestions_multiple",
+                    json=ai_payload,
+                    timeout=30
+                )
+                if response.status_code != 200:
+                    logger.warning(f"⚠️ AI response error for service {service.id}: {response.text}")
+                    continue
+
+                try:
+                    data = response.json()
+                except Exception as parse_error:
+                    logger.warning(f"⚠️ Failed to parse JSON for service {service.id}: {parse_error}")
+                    continue
+
+                suggestions = data.get("suggested_keywords", {})
+
+                if not isinstance(suggestions, dict):
+                    logger.warning(f"⚠️ Invalid AI response for service {service.id}: {suggestions}")
+                    continue
+
+                for original_keyword, suggestion_list in suggestions.items():
+                    if not suggestion_list:
+                        logger.info(f"ℹ️ No suggestions returned for keyword '{original_keyword}'")
+                        continue
+
+                    # Pick keyword with highest search volume
+                    best_keyword = max(suggestion_list, key=lambda k: k.get("search_volume", 0))
+                    new_keyword = best_keyword["keyword"]
+
+                    if new_keyword and new_keyword != original_keyword:
+                        keyword_obj = Keyword.objects.filter(service=service, keyword=original_keyword).first()
+                        if keyword_obj:
+                            logger.info(f"🔄 Replacing keyword '{original_keyword}' with '{new_keyword}' (volume: {best_keyword['search_volume']})")
+                            keyword_obj.keyword = new_keyword
+                            keyword_obj.save()
+                        else:
+                            logger.warning(f"⚠️ Keyword object not found for '{original_keyword}' in service {service.id}")
+                    else:
+                        logger.info(f"✅ Keeping keyword '{original_keyword}' as is (volume: {best_keyword['search_volume']})")
+
+            except Exception as e:
+                logger.exception(f"❌ Failed optimizing keywords for service {service.id}: {e}")
+
+        # Mark task complete
+        task.status = "completed"
+        task.last_run = timezone.now()
+        task.next_run = timezone.now() + timedelta(days=onboarding.package.interval if onboarding.package else 7)
+        task.save()
+        logger.info(f"✅ Keyword optimization task {task.id} completed.")
+
+    except Exception as e:
+        logger.exception(f"❌ Exception in run_keyword_optimization for task {task.id}: {str(e)}")
         task.status = "failed"
         task.ai_response_payload = {"error": str(e)}
         task.save()

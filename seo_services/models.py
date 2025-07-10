@@ -83,6 +83,7 @@ class SEOTask(models.Model):
     TASK_TYPES = (
         ('seo_optimization', 'SEO Optimization'),
         ('blog_writing', 'Blog Writing'),
+        ('keyword_optimization', 'Keyword Optimization')
     )
 
     STATUS_CHOICES = (
