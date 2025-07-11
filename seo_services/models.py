@@ -11,6 +11,7 @@ class Package(models.Model):
     business_location_limit = models.IntegerField()
     blog_limit = models.IntegerField()
     keyword_limit = models.IntegerField()
+    seo_optimization_limit = models.IntegerField()
     stripe_price_id = models.CharField(max_length=200, null=True, blank=True)
 
 class OnboardingForm(models.Model):

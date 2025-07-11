@@ -44,6 +44,16 @@ class PackageCreateAPIView(APIView):
                 return Response({"error": str(e)}, status=500)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def get(self, request, pk=None):
+        if pk:
+            package = get_object_or_404(Package, pk=pk)
+            serializer = PackageSerializer(package)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        packages = Package.objects.all()
+        serializer = PackageSerializer(packages, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
 
 
 class OnBoardingFormAPIView(APIView):
