@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt', # 2
     'seo_services',
     'payment',
+    'job',
 ]
 
 MIDDLEWARE = [
@@ -223,3 +224,7 @@ LOGGING = {
         },
     },
 }
+
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
