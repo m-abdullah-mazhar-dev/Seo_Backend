@@ -8,6 +8,9 @@ from .serializers import UserSerializer, UserLoginSerializer
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from rest_framework.permissions import IsAuthenticated
+from .serializers import ChangePasswordSerializer
+
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
 
@@ -49,3 +52,14 @@ class UserLoginApi(APIView):
 
 
 
+class ChangePasswordApi(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            user = request.user
+            user.set_password(serializer.validated_data['new_password'])
+            user.save()
+            return Response({"msg": "Password changed successfully"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
