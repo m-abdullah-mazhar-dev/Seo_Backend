@@ -1,4 +1,8 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+
+from seo_services.models import WordPressConnection
+User = get_user_model()
 
 # Create your models here.
 
@@ -120,3 +124,12 @@ class JobOnboardingForm(models.Model):
 
     def __str__(self):
         return self.company_name
+    
+class JobPage(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='job_pages')
+    wordpress_connection = models.ForeignKey(WordPressConnection, on_delete=models.CASCADE, related_name='job_pages')
+    page_url = models.URLField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.page_url
