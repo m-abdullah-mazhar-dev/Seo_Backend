@@ -5,4 +5,6 @@ urlpatterns = [
     path('register/', RegisterApi.as_view(), name = "register"),      # User-related APIs
     path('login/', UserLoginApi.as_view(), name = "login"),      # User-related APIs
     path('change-password/', ChangePasswordApi.as_view()),
+    path('reset-password-email/', SendPasswordResetEmailApi.as_view()),
+    path('reset-password/', ResetPasswordApi.as_view()),
 ]

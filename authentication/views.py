@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate
 
-from .serializers import UserSerializer, UserLoginSerializer
+from .serializers import ResetPasswordSerializer, SendPasswordResetEmailSerializer, UserSerializer, UserLoginSerializer
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -62,4 +62,21 @@ class ChangePasswordApi(APIView):
             user.set_password(serializer.validated_data['new_password'])
             user.save()
             return Response({"msg": "Password changed successfully"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class SendPasswordResetEmailApi(APIView):
+    def post(self, request):
+        serializer = SendPasswordResetEmailSerializer(data=request.data)
+        if serializer.is_valid():
+            return Response({"msg": "Password reset link sent"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+class ResetPasswordApi(APIView):
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            return Response({"msg": "Password has been reset successfully"}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

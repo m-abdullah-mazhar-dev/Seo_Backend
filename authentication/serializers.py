@@ -1,4 +1,11 @@
 from rest_framework import serializers
+from django.core.mail import send_mail
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.conf import settings
+from django.utils.http import urlsafe_base64_decode
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
@@ -61,5 +68,63 @@ class ChangePasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({"new_password": "New password must be different from the old one"})
         
         validate_password_strength(new_password)
+
+        return attrs
+
+class SendPasswordResetEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate(self, attrs):
+        email = attrs.get("email")
+        if not User.objects.filter(email=email).exists():
+            raise serializers.ValidationError("User with this email doesn't exist")
+
+        user = User.objects.get(email=email)
+        uid = urlsafe_base64_encode(force_bytes(user.id))
+        token = PasswordResetTokenGenerator().make_token(user)
+        print(settings.FRONTEND_RESET_URL)
+        reset_url = f"{settings.FRONTEND_RESET_URL}{uid}.{token}"
+
+        subject = "Reset Your Password"
+        message = f"Hi {user.first_name},\n\nClick the link below to reset your password:\n{reset_url}\n\nIf you didn't request this, ignore this email."
+
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=False,
+        )
+        return attrs
+    
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    uid_token = serializers.CharField()
+    new_password = serializers.CharField()
+    confirm_password = serializers.CharField()
+
+    def validate(self, attrs):
+        uid_token = attrs.get("uid_token")
+        new_password = attrs.get("new_password")
+        confirm_password = attrs.get("confirm_password")
+
+        try:
+            uidb64, token = uid_token.split(".")
+            user_id = urlsafe_base64_decode(uidb64).decode()
+            user = User.objects.get(id=user_id)
+        except Exception:
+            raise serializers.ValidationError("Invalid or expired token")
+
+        if not PasswordResetTokenGenerator().check_token(user, token):
+            raise serializers.ValidationError("Invalid or expired token")
+
+        if new_password != confirm_password:
+            raise serializers.ValidationError("Passwords do not match")
+
+        validate_password_strength(new_password)
+
+        user.set_password(new_password)
+        user.save()
 
         return attrs
