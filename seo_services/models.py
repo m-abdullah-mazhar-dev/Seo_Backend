@@ -1,3 +1,4 @@
+from django.utils import timezone
 from django.db import models
 from authentication.models import User
 
@@ -79,6 +80,8 @@ class ServicePage(models.Model):
     def __str__(self):
         return self.page_url
 
+def default_month_year():
+    return timezone.now().strftime('%Y-%m')
 
 class SEOTask(models.Model):
     TASK_TYPES = (
@@ -103,6 +106,8 @@ class SEOTask(models.Model):
     optimized_content = models.TextField(null=True,blank=True)
     last_run = models.DateTimeField(null=True, blank=True)
     next_run = models.DateTimeField(null=True, blank=True)
+    count_this_month = models.IntegerField(default=0)
+    month_year = models.CharField(max_length=7, default=default_month_year)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

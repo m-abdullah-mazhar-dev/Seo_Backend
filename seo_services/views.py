@@ -335,8 +335,19 @@ def run_blog_writing(task):
         task.ai_response_payload = data
         task.last_run = timezone.now()
         task.next_run = timezone.now() + timedelta(days=interval_days)
+        # task.next_run = timezone.now() + timezone.timedelta(minutes=3)
         task.status = "completed"
         task.save()
+
+        # 🔁 Monthly count logic
+        current_month = timezone.now().strftime('%Y-%m')
+        if task.month_year != current_month:
+            task.count_this_month = 0
+            task.month_year = current_month
+
+        task.count_this_month += 1
+        task.save()
+
 
         logger.info(f"✅ Task {task.id} completed successfully.")
         try:
@@ -346,25 +357,24 @@ def run_blog_writing(task):
             logger.exception(f"❌ Wordpress blog upload failed: {str(e)}")
 
 
-            # 🔁 Auto-create next task if blog limit not reached
-        user = task.user
-        package = user.onboardingform.first().package
-        # Count previous blog tasks for this page
-        total_blogs = SEOTask.objects.filter(
-            user=user,
-            service_page=task.service_page,
-            task_type='blog_writing'
-        ).count()
-
-        if total_blogs < package.blog_limit:
+        # 🔁 Auto-create next task if blog limit not reached
+        # 🔁 Auto-create next blog task if blog limit not reached
+        package = onboarding.package
+        if task.count_this_month < package.blog_limit:
             SEOTask.objects.create(
                 user=user,
                 service_page=task.service_page,
                 task_type='blog_writing',
                 next_run=task.last_run + timedelta(days=package.interval),
-                status='pending'
+                # next_run = timezone.now() + timezone.timedelta(minutes=3),
+                status='pending',
+                count_this_month=task.count_this_month,
+                month_year=current_month
             )
-            logger.info(f"✅ New Task created.")
+            logger.info(f"✅ New blog writing task created (this_month_count={task.count_this_month})")
+        else:
+            logger.info(f"🚫 Blog limit reached for this month: {task.count_this_month}/{package.blog_limit}")
+
     except Exception as e:
         logger.exception(f"❌ Exception in run_blog_writing for task {task.id}: {str(e)}")
         task.status = "failed"
@@ -383,6 +393,23 @@ def run_seo_optimization(task):
         if not onboarding:
             logger.warning("⚠️ No onboarding form found.")
             task.status = "failed"
+            task.save()
+            return
+        
+        #  Monthly check
+        current_month = timezone.now().strftime("%Y-%m")
+        package_limit = onboarding.package.seo_optimization_limit if onboarding.package else 5  # adjust default if needed
+
+        # Count SEO tasks for current month
+        monthly_count = SEOTask.objects.filter(
+            user=user,
+            task_type='seo_optimization',
+            month_year=current_month
+        ).count()
+
+        if monthly_count >= package_limit:
+            logger.warning("🚫 SEO task limit reached for this month.")
+            task.status = "skipped"
             task.save()
             return
 
@@ -446,6 +473,8 @@ def run_seo_optimization(task):
         task.status = "completed"
         task.last_run = timezone.now()
         task.next_run = timezone.now() + timedelta(days=onboarding.package.interval if onboarding.package else 7)
+        task.month_year = current_month
+        task.count_this_month = monthly_count + 1  
         task.save()
 
         logger.info(f"✅ SEO Optimization Task {task.id} completed and saved.")
@@ -474,6 +503,22 @@ def run_keyword_optimization(task):
         if not onboarding:
             logger.warning(f"⚠️ No onboarding form found for user {user.email}")
             task.status = "failed"
+            task.save()
+            return
+        
+        # Monthly limit check
+        current_month = timezone.now().strftime("%Y-%m")
+        package_limit = onboarding.package.keyword_limit if onboarding.package else 5  # Default if missing
+
+        monthly_count = SEOTask.objects.filter(
+            user=user,
+            task_type='keyword_optimization',
+            month_year=current_month
+        ).count()
+
+        if monthly_count >= package_limit:
+            logger.warning(f"🚫 Keyword optimization limit reached for this month.")
+            task.status = "skipped"
             task.save()
             return
 
@@ -540,6 +585,9 @@ def run_keyword_optimization(task):
         task.status = "completed"
         task.last_run = timezone.now()
         task.next_run = timezone.now() + timedelta(days=onboarding.package.interval if onboarding.package else 7)
+        # task.next_run = timezone.now() + timezone.timedelta(minutes=3)
+        task.month_year = current_month
+        task.count_this_month = monthly_count + 1
         task.save()
         logger.info(f"✅ Keyword optimization task {task.id} completed.")
 
