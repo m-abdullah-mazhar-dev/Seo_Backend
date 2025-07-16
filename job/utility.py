@@ -2,16 +2,57 @@ import requests
 from django.utils.text import slugify
 
 
+
+def get_or_create_jobs_category(wp_conn):
+    headers = {
+        'Authorization': f'Basic {wp_conn.access_token}',
+        'Content-Type': 'application/json',
+    }
+
+    # Step 1: Try to get the existing "jobs" category
+    response = requests.get(
+        f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/categories?slug=jobs",
+        headers=headers,
+    )
+
+    if response.status_code == 200:
+        categories = response.json()
+        if categories:
+            return categories[0]['id']
+
+    # Step 2: If not found, create the category
+    data = {
+        "name": "Jobs",
+        "slug": "jobs",
+        "description": "All trucking job listings"
+    }
+
+    response = requests.post(
+        f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/categories",
+        headers=headers,
+        json=data
+    )
+
+    if response.status_code in [200, 201]:
+        return response.json()['id']
+    else:
+        raise Exception(f"Failed to create 'Jobs' category: {response.text}")
+
+
+
 def upload_job_post_to_wordpress(job_form, job_page, html_content):
     wp_conn = job_page.wordpress_connection
     title = f"{job_form.company_name} - Hiring CDL Drivers"
+
+    category_id = get_or_create_jobs_category(wp_conn)
 
     slug = slugify(title)
     post_data = {
         "title": title,
         "slug": slug,
         "content": f"<div>{html_content}</div>",
-        "status": "publish"
+        "status": "publish",
+        "categories": [category_id], 
     }
 
     headers = {
