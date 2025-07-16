@@ -2,12 +2,17 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from job.models import JobOnboardingForm, JobPage
+from job.models import *
 from job.utility import generate_structured_job_html, upload_job_post_to_wordpress
 from seo_services.models import WordPressConnection
 from .serializers import JobOnboardingFormSerializer
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
+from rest_framework.permissions import AllowAny
+from .models import ClientFeedback
+from django.core.mail import send_mail
+from django.conf import settings
+from seo_services.models import OnboardingForm , BusinessLocation
 
 class CreateJobOnboardingFormAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -95,3 +100,64 @@ class SubmitJobPageAPI(APIView):
         )
 
         return Response({"message": "Job page submitted successfully."})
+    
+
+class JobClosedAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        service_area = request.data.get("service_area")
+        job_id = request.data.get("job_id")
+
+        print("Job Closed from n8n:", email, service_area, job_id)
+        feedback = ClientFeedback.objects.create(
+            email=email,
+            service_area=service_area,
+            job_id=job_id
+        )
+
+        yes_url = f"{settings.FRONTEND_RESET_URL}job/feedback/{feedback.token}/yes/"
+        no_url = f"{settings.FRONTEND_RESET_URL}job/feedback/{feedback.token}/no/"
+
+        # Send email
+        send_mail(
+            subject="Are you satisfied with the service?",
+            message=f"Please let us know:\nYes: {yes_url}\nNo: {no_url}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+        )
+
+        return Response({"status": "email sent"})
+
+
+class FeedbackAPI(APIView):
+    def get(self, request, token, answer):
+        try:
+            feedback = ClientFeedback.objects.get(token=token)
+        except ClientFeedback.DoesNotExist:
+            return Response({"error": "Invalid or expired link"}, status=404)
+
+        # Update feedback
+        feedback.is_satisfied = (answer == "yes")
+        feedback.save()
+
+        # Base response
+        response_data = {
+            "satisfied": feedback.is_satisfied,
+            "email": feedback.email,
+            "job_id": feedback.job_id,
+            "service_area": feedback.service_area,
+        }
+
+        if feedback.is_satisfied:
+            # Now find business location using service_area + user
+            onboarding_form = OnboardingForm.objects.filter(email=feedback.email).first()
+            if onboarding_form:
+                location = BusinessLocation.objects.filter(onboarding_form=onboarding_form).first()
+                if location:
+                    response_data["review_url"] = location.location_url
+        else:
+            response_data["feedback_url"] = "https://your-feedback-form.com"
+
+        return Response(response_data, status=200)

@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-
+import uuid
 from seo_services.models import WordPressConnection
 User = get_user_model()
 
@@ -133,3 +133,15 @@ class JobPage(models.Model):
 
     def __str__(self):
         return self.page_url
+
+
+
+#
+class ClientFeedback(models.Model):
+    email = models.EmailField()
+    job_id = models.CharField(max_length=100)
+    service_area = models.CharField(max_length=200)
+    token = models.UUIDField(default=uuid.uuid4, unique=True)
+    is_satisfied = models.BooleanField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
