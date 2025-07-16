@@ -2,6 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 from django.utils.text import slugify
 import logging
+
+from job.utility import get_or_create_category
 logger = logging.getLogger(__name__)
 
 # def upload_blog_to_wordpress(blog, wp_conn):
@@ -91,6 +93,8 @@ def upload_blog_to_wordpress(blog, wp_conn):
 
     slug = slugify(title)
     logger.debug(f"Slug generated: {slug}")
+    category_id = get_or_create_category(wp_conn, slug="blogs", name="Blogs", description="All blog articles")
+
 
     # Upload the blog post to WordPress
     post_data = {
@@ -98,6 +102,7 @@ def upload_blog_to_wordpress(blog, wp_conn):
         "slug": slug,
         "content": f"<div>{content_html}</div>",
         "status": "publish",
+        "categories": [category_id], 
     }
 
     if image_url:
