@@ -3,6 +3,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.conf import settings
+
+from payment.serializers import UserSubscriptionSerializer
 from .models import Package, UserSubscription
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse, HttpResponse
@@ -78,6 +80,14 @@ class CreateSubscription(APIView):
         except Exception as e:
             return Response({'error': f"Server error: {str(e)}"}, status=500)
         
+    def get(self, request):
+        try:
+            subscription = UserSubscription.objects.get(user=request.user)
+            serializer = UserSubscriptionSerializer(subscription)
+            return Response(serializer.data)
+        except UserSubscription.DoesNotExist:
+            return Response({'error': 'No subscription found for the user.'}, status=404)
+
 
 # @csrf_exempt
 # def stripe_webhook(request):
