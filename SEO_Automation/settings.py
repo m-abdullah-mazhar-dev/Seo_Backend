@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+from corsheaders.defaults import default_headers, default_methods
+
 
 import os
 from dotenv import load_dotenv
@@ -181,6 +183,7 @@ SIMPLE_JWT = {
 # 6
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
+    "http://localhost:3000",
     "http://127.0.0.1:9000",
 ]
 
@@ -193,6 +196,13 @@ STRIPE_PUBLIC_KEY = 'pk_test_...'  # Optional for frontend
 STRIPE_WEBHOOK_SECRET = 'whsec_e7c846c5dab294c1efb3d832ee1c8550dd13c23782ca25c701d5498c9bd31051'
 ALLOWED_HOSTS = ['*']
 AI_API_DOMAIN = "http://51.21.149.16:5000"
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'Authorization',
+]
+
+CORS_ALLOW_METHODS = list(default_methods)
+
 
 
 # Celery
