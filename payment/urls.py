@@ -3,5 +3,6 @@ from .views import *
 
 urlpatterns = [
     path('create-subscription/', CreateSubscription.as_view(), name='create-subscription'),
+    path('upgrade-subscription/', UpgradeSubscriptionAPIView.as_view(), name='upgrade-subscription'),
     path('webhook/', stripe_webhook, name='stripe-webhook')
 ]

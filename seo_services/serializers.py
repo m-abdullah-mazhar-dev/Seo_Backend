@@ -7,6 +7,9 @@ class PackageSerializer(serializers.ModelSerializer):
         model = Package
         fields = '__all__'
         read_only_fields = ['stripe_price_id']
+        extra_kwargs = {
+            'price': {'required': False},
+        }
 
 
 class KeywordSerialzier(serializers.ModelSerializer):
