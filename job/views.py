@@ -13,6 +13,11 @@ from .models import ClientFeedback
 from django.core.mail import send_mail
 from django.conf import settings
 from seo_services.models import OnboardingForm , BusinessLocation
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.utils import timezone
+
 
 class CreateJobOnboardingFormAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -121,12 +126,38 @@ class JobClosedAPIView(APIView):
         no_url = f"{settings.FRONTEND_RESET_URL}job/feedback/{feedback.token}/no/"
 
         # Send email
-        send_mail(
-            subject="Are you satisfied with the service?",
-            message=f"Please let us know:\nYes: {yes_url}\nNo: {no_url}",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
+        # send_mail(
+        #     subject="Are you satisfied with the service?",
+        #     message=f"Please let us know:\nYes: {yes_url}\nNo: {no_url}",
+        #     from_email=settings.DEFAULT_FROM_EMAIL,
+        #     recipient_list=[email],
+        # )
+
+        # Prepare context for the email template
+        context = {
+            'yes_url': yes_url,
+            'no_url': no_url,
+            'job_id': job_id,
+            'from_email': settings.DEFAULT_FROM_EMAIL,
+            'to_email': email,
+            'current_date': timezone.now(),
+        }
+
+        # Render HTML content
+        html_content = render_to_string('emails/client_feedback.html', context)
+        
+        # Create the email
+        subject = "Your Feedback Means A Lot"
+        text_content = strip_tags(html_content)  # Fallback text version
+        
+        email_msg = EmailMultiAlternatives(
+            subject,
+            text_content,
+            settings.DEFAULT_FROM_EMAIL,
+            [email]
         )
+        email_msg.attach_alternative(html_content, "text/html")
+        email_msg.send()
 
         return Response({"status": "email sent"})
 
