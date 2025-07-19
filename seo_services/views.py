@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.shortcuts import get_object_or_404, render
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -22,7 +23,8 @@ class PackageCreateAPIView(APIView):
     def post(self, request):
         serializer = PackageSerializer(data=request.data)
         if serializer.is_valid():
-            package = serializer.save()
+            price_usd = Decimal(request.data.get("price_usd", 0))
+            package = serializer.save(price=price_usd)
 
             # You must pass amount in cents, for example: $49.99 = 4999
             try:
@@ -53,7 +55,6 @@ class PackageCreateAPIView(APIView):
         packages = Package.objects.all()
         serializer = PackageSerializer(packages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-        
 
 
 class OnBoardingFormAPIView(APIView):

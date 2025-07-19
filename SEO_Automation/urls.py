@@ -26,4 +26,5 @@ urlpatterns = [
     path('payment/', include("payment.urls") ),
     path('seo/', include("seo_services.urls") ),
     path('job/', include("job.urls") ),
+    path('stripe/', include("payment.urls") ),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
