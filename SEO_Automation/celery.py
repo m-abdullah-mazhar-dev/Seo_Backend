@@ -19,4 +19,12 @@ app.conf.beat_schedule = {
         'schedule': crontab(),  # Runs every minute
         'args': (),  # You can pass arguments if needed
     },
+    'reactivate-monthly-blog-tasks': {
+        'task': 'seo_services.tasks.reactivate_monthly_blog_tasks',
+        'schedule': crontab(),  # every day at midnight
+        # 'schedule': crontab(minute=0, hour=0),  # every day at midnight
+    },
 }
+
+
+    

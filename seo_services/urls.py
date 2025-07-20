@@ -15,5 +15,8 @@ urlpatterns = [
     path('my-keywords/', MyKeywordsView.as_view(), name='my-keywords'),
     path('my-blogs/', MyBlogsView.as_view(), name='my-blogs'),
 
+    path("stop/",StopAutomation.as_view()),
+    path("start/",StartAutomation.as_view()),
+
 
 ]
