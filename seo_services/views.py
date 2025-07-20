@@ -413,14 +413,13 @@ def run_seo_optimization(task):
         current_month = timezone.now().strftime("%Y-%m")
         package_limit = onboarding.package.seo_optimization_limit if onboarding.package else 5  # adjust default if needed
 
-        # Count SEO tasks for current month
-        monthly_count = SEOTask.objects.filter(
-            user=user,
-            task_type='seo_optimization',
-            month_year=current_month
-        ).count()
+        
+        if task.month_year != current_month:
+            task.count_this_month = 0
+            task.month_year = current_month
 
-        if monthly_count >= package_limit:
+        # Check if limit reached
+        if task.count_this_month >= package_limit:
             logger.warning("🚫 SEO task limit reached for this month.")
             task.status = "skipped"
             task.save()
@@ -487,7 +486,7 @@ def run_seo_optimization(task):
         task.last_run = timezone.now()
         task.next_run = timezone.now() + timedelta(days=onboarding.package.interval if onboarding.package else 7)
         task.month_year = current_month
-        task.count_this_month = monthly_count + 1  
+        task.count_this_month +=1 
         task.save()
 
         logger.info(f"✅ SEO Optimization Task {task.id} completed and saved.")
@@ -498,7 +497,31 @@ def run_seo_optimization(task):
         except Exception as e:
             logger.exception(f"❌ Wordpress blog upload failed: {str(e)}")
 
-        
+        # create next task 
+        if task.count_this_month < package_limit:
+            SEOTask.objects.create(
+                user=user,
+                service_page=service_page,
+                task_type='seo_optimization',
+                next_run=task.next_run,
+                status='pending',
+                count_this_month=task.count_this_month,
+                month_year=current_month,
+                is_active=True,
+            )
+            logger.info("✅ Created next SEO task.")
+        else:
+            SEOTask.objects.create(
+                user=user,
+                service_page=service_page,
+                task_type='seo_optimization',
+                next_run=None,
+                status='pending',
+                count_this_month=0,
+                month_year=current_month,
+                is_active=True,
+            )
+            logger.info("⏸️ Limit reached, next SEO task paused for this month.")    
 
     except Exception as e:
         logger.exception(f"❌ Exception in SEO Optimization task: {str(e)}")
