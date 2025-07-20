@@ -62,7 +62,7 @@ def reactivate_monthly_blog_tasks():
     current_month = timezone.now().strftime('%Y-%m')
     
     paused_tasks = SEOTask.objects.filter(
-        task_type='blog_writing',
+        # task_type='blog_writing',
         next_run=None,
         status='pending',
         is_active=True
