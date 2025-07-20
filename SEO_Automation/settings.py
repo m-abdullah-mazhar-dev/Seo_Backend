@@ -256,6 +256,10 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
 FRONTEND_RESET_URL = os.getenv('FRONTEND_RESET_URL')
 
 
+TIME_ZONE = 'Asia/Karachi'      # For Pakistan Standard Time
+USE_TZ = True                   # Ensures timezone-aware datetimes
+
+
 # EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 # EMAIL_HOST = "smtp.office365.com"
 # EMAIL_PORT = 587

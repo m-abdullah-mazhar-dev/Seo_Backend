@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 def process_due_seo_tasks():
     logger.info(f"🔄SEO tasks started.")
     now = timezone.now()
-    tasks = SEOTask.objects.filter(next_run__lte=now, status='pending')
+    tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
     # tasks = SEOTask.objects.filter(status='pending')
     logger.info(f"🔄 Found {tasks.count()} due SEO tasks to process.")
 
@@ -53,3 +53,26 @@ def process_due_seo_tasks():
                 run_keyword_optimization(task)
         except Exception as e:
             logger.error(f"❌ Failed processing task ID {task.id}: {str(e)}")
+
+
+@shared_task
+def reactivate_monthly_blog_tasks():
+    logger = logging.getLogger(__name__)
+    logger.info("🔁 Checking for monthly reset of blog tasks...")
+    current_month = timezone.now().strftime('%Y-%m')
+    
+    paused_tasks = SEOTask.objects.filter(
+        task_type='blog_writing',
+        next_run=None,
+        status='pending',
+        is_active=True
+    )
+    
+    for task in paused_tasks:
+        if task.month_year != current_month:
+            logger.info(f"✅ Reactivating Task {task.id} (new month)")
+            task.count_this_month = 0
+            task.month_year = current_month
+            task.next_run = timezone.now()
+            task.save()
+        logger.info(f"months are same {current_month} -- {task.month_year}")

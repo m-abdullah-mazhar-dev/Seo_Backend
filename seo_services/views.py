@@ -331,15 +331,6 @@ def run_blog_writing(task):
         if image_url:
             BlogImage.objects.create(blog=blog, image_url=image_url)
 
-        interval_days = onboarding.package.interval if onboarding.package else 7
-        task.ai_request_payload = ai_payload
-        task.ai_response_payload = data
-        task.last_run = timezone.now()
-        task.next_run = timezone.now() + timedelta(days=interval_days)
-        # task.next_run = timezone.now() + timezone.timedelta(minutes=3)
-        task.status = "completed"
-        task.save()
-
         # 🔁 Monthly count logic
         current_month = timezone.now().strftime('%Y-%m')
         if task.month_year != current_month:
@@ -347,6 +338,14 @@ def run_blog_writing(task):
             task.month_year = current_month
 
         task.count_this_month += 1
+
+        interval_days = onboarding.package.interval if onboarding.package else 7
+        task.ai_request_payload = ai_payload
+        task.ai_response_payload = data
+        task.last_run = timezone.now()
+        task.next_run = timezone.now() + timedelta(days=interval_days)
+        # task.next_run = timezone.now() + timezone.timedelta(minutes=3)
+        task.status = "completed"
         task.save()
 
 
@@ -361,7 +360,7 @@ def run_blog_writing(task):
         # 🔁 Auto-create next task if blog limit not reached
         # 🔁 Auto-create next blog task if blog limit not reached
         package = onboarding.package
-        if task.count_this_month < package.blog_limit:
+        if task.is_active and  task.count_this_month < package.blog_limit:
             SEOTask.objects.create(
                 user=user,
                 service_page=task.service_page,
@@ -370,11 +369,24 @@ def run_blog_writing(task):
                 # next_run = timezone.now() + timezone.timedelta(minutes=3),
                 status='pending',
                 count_this_month=task.count_this_month,
-                month_year=current_month
+                month_year=current_month,
+                is_active=True
             )
             logger.info(f"✅ New blog writing task created (this_month_count={task.count_this_month})")
         else:
-            logger.info(f"🚫 Blog limit reached for this month: {task.count_this_month}/{package.blog_limit}")
+            
+            # ✅ Limit hit: Pause next task, will resume next month
+            SEOTask.objects.create(
+                user=user,
+                service_page=task.service_page,
+                task_type='blog_writing',
+                next_run=None,
+                status='pending',
+                count_this_month=0,  # new month will reset this
+                month_year=current_month,
+                is_active=True
+            )
+            logger.info(f"⏸️ Blog limit reached. Next task paused until new month.")
 
     except Exception as e:
         logger.exception(f"❌ Exception in run_blog_writing for task {task.id}: {str(e)}")
@@ -598,7 +610,63 @@ def run_keyword_optimization(task):
         task.ai_response_payload = {"error": str(e)}
         task.save()
 
+class StopAutomation(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def post(self, request):
+        user = request.user
+        action = request.data.get("action")
+
+        if not action:
+            return Response({"success": False, "message": "action is required."}, status=400)
+
+        task_type_map = {
+            "keywords": "keyword_optimization",
+            "blog": "blog_writing",
+            "seo": "seo_optimization"
+        }
+
+        task_type = task_type_map.get(action)
+        if not task_type:
+            return Response({"success": False, "message": "Invalid action."}, status=400)
+        tasks = SEOTask.objects.filter(user=user, task_type=task_type, is_active=True)
+        if not tasks.exists():
+            return Response({"success": False, "message": f"No active {action} tasks found for user."}, status=404)
+
+        tasks.update(is_active=False)
+        return Response({"success": True, "message": f"{action.capitalize()} stopped successfully."})
+    
+
+
+class StartAutomation(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        action = request.data.get("action")
+
+        if not action:
+            return Response({"success": False, "message": "Action is required."}, status=400)
+
+        valid_actions = {
+            "blog": "blog_writing",
+            "seo": "seo_optimization",
+            "keywords": "keyword_optimization"
+        }
+
+        task_type = valid_actions.get(action)
+        if not task_type:
+            return Response({"success": False, "message": "Invalid action provided."}, status=400)
+
+        # Get all inactive tasks of that type for the user
+        tasks = SEOTask.objects.filter(user=user, task_type=task_type, is_active=False)
+        if not tasks.exists():
+            return Response({"success": False, "message": f"No inactive {action} tasks found for user."}, status=404)
+
+        # Activate all those tasks
+        tasks.update(is_active=True)
+
+        return Response({"success": True, "message": f"{action.capitalize()} automation started successfully."})
 
 
 # Get Apis ---------------------------

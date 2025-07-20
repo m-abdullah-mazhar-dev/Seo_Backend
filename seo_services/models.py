@@ -107,14 +107,14 @@ class SEOTask(models.Model):
     optimized_content = models.TextField(null=True,blank=True)
     last_run = models.DateTimeField(null=True, blank=True)
     next_run = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
     count_this_month = models.IntegerField(default=0)
     month_year = models.CharField(max_length=7, default=default_month_year)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.user.email} - {self.get_task_type_display()} - {self.status}"
-
+        return f"{self.user.email} - {self.get_task_type_display()} - {self.status} - {self.is_active}"
 
 class Blog(models.Model):
     seo_task = models.OneToOneField(SEOTask, on_delete=models.CASCADE, related_name='blog')
