@@ -546,16 +546,22 @@ def run_keyword_optimization(task):
         current_month = timezone.now().strftime("%Y-%m")
         package_limit = onboarding.package.keyword_limit if onboarding.package else 5  # Default if missing
 
-        monthly_count = SEOTask.objects.filter(
-            user=user,
-            task_type='keyword_optimization',
-            month_year=current_month
-        ).count()
-
-        if monthly_count >= package_limit:
+        if task.month_year == current_month and task.count_this_month >= package_limit:
             logger.warning(f"🚫 Keyword optimization limit reached for this month.")
             task.status = "skipped"
+            task.next_run = None
             task.save()
+
+            SEOTask.objects.create(
+                user=user,
+                task_type="keyword_optimization",
+                status="pending",
+                is_active=True,
+                month_year=current_month,
+                count_this_month=0,
+                next_run=None,
+            )
+            logger.info("⏸️ Limit reached, next keyword task paused for this month.")
             return
 
         services = onboarding.services.all()
@@ -623,15 +629,41 @@ def run_keyword_optimization(task):
         task.next_run = timezone.now() + timedelta(days=onboarding.package.interval if onboarding.package else 7)
         # task.next_run = timezone.now() + timezone.timedelta(minutes=3)
         task.month_year = current_month
-        task.count_this_month = monthly_count + 1
+        task.count_this_month = (task.count_this_month or 0) + 1
         task.save()
         logger.info(f"✅ Keyword optimization task {task.id} completed.")
+
+        # ✅ Create next task (Active or Paused based on usage)
+        if task.count_this_month <= package_limit:
+            SEOTask.objects.create(
+                user=user,
+                task_type="keyword_optimization",
+                next_run=task.next_run,
+                status="pending",
+                count_this_month=task.count_this_month,
+                month_year=current_month,
+                is_active=True,
+            )
+            logger.info("✅ Created next keyword optimization task.")
+        else:
+            SEOTask.objects.create(
+                user=user,
+                task_type="keyword_optimization",
+                next_run=None,
+                status="pending",
+                count_this_month=0,
+                month_year=current_month,
+                is_active=True,
+            )
+            logger.info("⏸️ Limit reached, next keyword task paused for this month.")
 
     except Exception as e:
         logger.exception(f"❌ Exception in run_keyword_optimization for task {task.id}: {str(e)}")
         task.status = "failed"
         task.ai_response_payload = {"error": str(e)}
         task.save()
+
+
 
 class StopAutomation(APIView):
     permission_classes = [IsAuthenticated]

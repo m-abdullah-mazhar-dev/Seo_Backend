@@ -99,7 +99,7 @@ class SEOTask(models.Model):
     )
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='seo_tasks')
-    service_page = models.ForeignKey(ServicePage, on_delete=models.CASCADE, related_name='seo_tasks')
+    service_page = models.ForeignKey(ServicePage, on_delete=models.CASCADE, null=True,blank=True, related_name='seo_tasks')
     task_type = models.CharField(max_length=50, choices=TASK_TYPES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     ai_request_payload = models.JSONField(null=True, blank=True)
