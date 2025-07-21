@@ -15,6 +15,7 @@ from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
 import re
 from .utils import create_stripe_product_and_price
+from rest_framework.permissions import IsAdminUser
 
 
 logger = logging.getLogger(__name__)
@@ -761,3 +762,12 @@ class MyBlogsView(APIView):
     
     
 # ----------------
+
+# admin 
+class AdminClientListAPIView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        users = User.objects.filter(user_type='user')
+        serializer = AdminClientDetailSerializer(users, many=True)
+        return Response(serializer.data)

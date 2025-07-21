@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from payment.models import UserSubscription
 from .models import *
 
 
@@ -239,3 +241,55 @@ class BlogSerializer(serializers.ModelSerializer):
     def get_image(self, obj):
         image = obj.images.first()
         return image.image_url if image else None
+
+
+
+
+class AdminClientDetailSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+    gbp_status = serializers.SerializerMethodField()
+    wp_status = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
+
+    blogs = serializers.SerializerMethodField()
+    onboarding = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'full_name', 'email', 'phone_number',
+            'gbp_status', 'wp_status', 'payment_status',
+            'blogs', 'onboarding'
+        ]
+
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+    def get_gbp_status(self, obj):
+        return None  # No GBP yet
+
+    def get_wp_status(self, obj):
+        return "Connected" if hasattr(obj, 'wordpress_connection') else "Not Connected"
+
+    def get_payment_status(self, obj):
+        try:
+            return obj.usersubscription.status
+        except UserSubscription.DoesNotExist:
+            return "No Subscription"
+
+    def get_blogs(self, obj):
+        blogs = Blog.objects.filter(seo_task__user=obj, seo_task__task_type="blog_writing")
+        return BlogSerializer(blogs, many=True).data
+
+    def get_onboarding(self, obj):
+        onboarding = OnboardingForm.objects.filter(user=obj).first()
+        if onboarding:
+            return {
+                "company_name": onboarding.company_name,
+                "phone_number": onboarding.phone_number,
+                "email": onboarding.email,
+                "services": ServiceSerializer(onboarding.services.all(), many=True).data,
+                "service_areas": ServiceAreaSerializer(onboarding.service_areas.all(), many=True).data,
+                "business_locations": BusinessLocationSerializer(onboarding.locations.all(), many=True).data
+            }
+        return {}
