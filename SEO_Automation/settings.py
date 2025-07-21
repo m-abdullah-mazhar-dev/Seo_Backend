@@ -39,6 +39,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'django.contrib.sites',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -48,11 +49,23 @@ INSTALLED_APPS = [
     "authentication",
     'corsheaders', # 4
     'rest_framework', # 1
+    'rest_framework.authtoken',
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
     'rest_framework_simplejwt', # 2
     'seo_services',
     'payment',
     'job',
+
+
+    # AllAuth
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
 ]
+
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -61,6 +74,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -260,10 +274,31 @@ TIME_ZONE = 'Asia/Karachi'      # For Pakistan Standard Time
 USE_TZ = True                   # Ensures timezone-aware datetimes
 
 
-# EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-# EMAIL_HOST = "smtp.office365.com"
-# EMAIL_PORT = 587
-# EMAIL_HOST_USER = os.environ.get("EMAIL_USER") 
-# EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_PASSWORD")
-# EMAIL_USE_TLS = True
-# DEFAULT_FROM_EMAIL = EMAIL_HOST_USER  
+# AllAuth config
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+SITE_ID = 1
+
+# Use JWTs with dj-rest-auth
+REST_USE_JWT = True
+
+
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APP': {
+            'client_id': '1044966450091-bmnlelo6of8is7t2399otn3ihd46bf36.apps.googleusercontent.com',
+            'secret': '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',
+            'key': ''
+        },
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        }
+    }
+}
+

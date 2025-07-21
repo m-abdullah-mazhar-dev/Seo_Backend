@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from .views import *
 
 
 urlpatterns = [
@@ -27,4 +28,12 @@ urlpatterns = [
     path('seo/', include("seo_services.urls") ),
     path('job/', include("job.urls") ),
     path('stripe/', include("payment.urls") ),
+    # Auth routes
+    path('dj-rest-auth/', include('dj_rest_auth.urls')),
+    path('dj-rest-auth/registration/', include('dj_rest_auth.registration.urls')),
+     # ✅ Add this for social login
+    path('dj-rest-auth/google/', GoogleLoginJWTOny.as_view(), name='google_login_jwt'),
+
+    # Required for social login callback (even if unused directly)
+    path('accounts/', include('allauth.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
