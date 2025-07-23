@@ -56,7 +56,7 @@ class ServiceArea(models.Model):
 class BusinessLocation(models.Model):
     onboarding_form = models.ForeignKey(OnboardingForm, on_delete=models.CASCADE, related_name='locations')
     location_name = models.CharField(max_length=1000)
-    location_url = models.URLField()
+    location_url = models.URLField(max_length=1000)
 
 
 class WordPressConnection(models.Model):
