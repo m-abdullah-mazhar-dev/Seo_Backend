@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404, render
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from seo_services.scrape import get_paa_questions
 from seo_services.upload_blog_to_wp import *
 from.serializers import *
 from rest_framework.response import Response
@@ -616,10 +617,35 @@ def run_keyword_optimization(task):
                             logger.info(f"🔄 Replacing keyword '{original_keyword}' with '{new_keyword}' (volume: {best_keyword['search_volume']})")
                             keyword_obj.keyword = new_keyword
                             keyword_obj.save()
+
+                            KeywordQuestion.objects.filter(keyword=keyword_obj).delete()  # Clear old ones
+                            try:
+                                questions = get_paa_questions(new_keyword)
+                                for q in questions:
+                                    KeywordQuestion.objects.create(keyword=keyword_obj, question=q)
+                                logger.info(f"Saved {len(questions)} questions for keyword: {new_keyword}")
+                            except Exception as e:
+                                logger.error(f"Failed to save questions for keyword {new_keyword}: {str(e)}")
+                                continue
                         else:
                             logger.warning(f"⚠️ Keyword object not found for '{original_keyword}' in service {service.id}")
                     else:
                         logger.info(f"✅ Keeping keyword '{original_keyword}' as is (volume: {best_keyword['search_volume']})")
+                        keyword_obj = Keyword.objects.filter(service=service, keyword=original_keyword).first()
+                        if keyword_obj:
+                            logger.info(f"🔍 Found keyword object: {keyword_obj.keyword}, Checking if questions exist...")
+
+                        if keyword_obj and not keyword_obj.questions.exists():
+                            try:
+                                questions = get_paa_questions(original_keyword)
+                                for q in questions:
+                                    KeywordQuestion.objects.create(keyword=keyword_obj, question=q)
+                                logger.info(f"📝 Saved {len(questions)} PAA questions for existing keyword: {original_keyword}")
+                            except Exception as e:
+                                logger.error(f"⚠️ Failed to save questions for keyword {original_keyword}: {str(e)}")
+                        else:
+                            if keyword_obj:
+                                logger.info(f"📌 Skipping PAA fetch — questions already exist for: {original_keyword}")
 
             except Exception as e:
                 logger.exception(f"❌ Failed optimizing keywords for service {service.id}: {e}")
