@@ -43,6 +43,16 @@ class Keyword(models.Model):
         if self.impressions == 0:
             return 0.0
         return round((self.clicks / self.impressions) * 100, 2)
+    
+
+class KeywordQuestion(models.Model):
+    keyword = models.ForeignKey(Keyword, on_delete=models.CASCADE, related_name='questions')
+    question = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Q: {self.question[:60]}"
+
 
 
 class ServiceArea(models.Model):
