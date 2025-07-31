@@ -274,23 +274,41 @@ def run_blog_writing(task):
             task.save()
             return
 
-        keywords = Keyword.objects.filter(
+        # keywords = Keyword.objects.filter(
+        #     service__onboarding_form=onboarding
+        # ).values_list('keyword', flat=True)
+
+        keywords_objects = Keyword.objects.filter(
             service__onboarding_form=onboarding
-        ).values_list('keyword', flat=True)
+        )
+
+        keywords = list(keywords_objects.values_list("keyword", flat=True))
 
         logger.info(f"🔑 Keywords for blog generation: {list(keywords)}")
 
-        if not keywords:
+        if not keywords_objects.exists():
             task.status = "failed"
             task.save()
             return
+        
+        research_words = []
+        for keyword in keywords_objects:
+            keyword_questions = keyword.questions.values_list("question", flat=True)
+            research_words.extend(keyword_questions)
+
+        research_words = list(set(research_words))  # Remove duplicates
+        logger.info(f"🧠 Research words: {research_words[:25]}... (total: {len(research_words)})")
 
         ai_payload = {
-            "keywords": list(keywords)
+            "keywords": list(keywords),
+            "research_words": research_words,
+            "type": "blog"
         }
+        
 
         response = requests.post(
-            f"{settings.AI_API_DOMAIN}/generate_blog_and_image",
+            # f"{settings.AI_API_DOMAIN}/generate_blog_and_image",
+            f"{settings.AI_API_DOMAIN}/generate_content",
             json=ai_payload,
             timeout=60
         )
@@ -305,17 +323,28 @@ def run_blog_writing(task):
         
         data = response.json()
 
-        blog_html = data.get("blog", "").strip()
+        blog_html = data.get("content", "").strip()
+
+        
+
         image_url_raw = data.get("imageUrl", "")
         image_url = re.sub(r"win\s+dows", "windows", image_url_raw)
 
-        # Remove ```html markdown wrapper
-        if blog_html.startswith("```html"):
-            blog_html = blog_html.replace("```html", "").replace("```", "").strip()
+        # # Remove ```html markdown wrapper
+        # if blog_html.startswith("```html"):
+        #     blog_html = blog_html.replace("```html", "").replace("```", "").strip()
+        # Remove markdown fences
+        blog_html = re.sub(r"^```html\s*", "", blog_html)
+        blog_html = re.sub(r"```$", "", blog_html.strip())
+        if not blog_html:
+            logger.warning("⚠️ Blog content is empty after cleaning.")
+
 
         # Extract <title>
         soup = BeautifulSoup(blog_html, "html.parser")
-        title = soup.title.string.strip() if soup.title else "Untitled Blog"
+        # title = soup.title.string.strip() if soup.title else "Untitled Blog"
+        titles = soup.find_all("title")
+        title = titles[0].text.strip() if titles else "Untitled Blog"
 
         logger.info("✅ Blog HTML received")
         logger.info("📝 Blog HTML: %s", blog_html)
