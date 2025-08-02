@@ -457,9 +457,14 @@ def run_seo_optimization(task):
             return
 
         # 🔑 Get all keywords related to services for this user
-        keywords = Keyword.objects.filter(
+        # keywords = Keyword.objects.filter(
+        #     service__onboarding_form=onboarding
+        # ).values_list("keyword", flat=True)
+        keyword_qs = Keyword.objects.filter(
             service__onboarding_form=onboarding
-        ).values_list("keyword", flat=True)
+        )
+        keywords = list(keyword_qs.values_list("keyword", flat=True))
+
 
         if not keywords:
             logger.warning("⚠️ No keywords found for SEO optimization.")
@@ -467,26 +472,56 @@ def run_seo_optimization(task):
             task.save()
             return
 
-        # 🌐 Fetch current HTML content from service page URL
-        try:
-            page_response = requests.get(service_page.page_url, timeout=20)
-            page_response.raise_for_status()
-            page_content = page_response.text
-        except Exception as e:
-            logger.exception(f"❌ Failed to fetch page content: {str(e)}")
-            task.status = "failed"
-            task.ai_response_payload = {"error": str(e)}
-            task.save()
-            return
+        questions = KeywordQuestion.objects.filter(keyword__in=keyword_qs)
+        research_words = list(questions.values_list("question", flat=True))
 
-        # 📡 Send to optimization API
+        logger.info(f"🔑 Keywords: {keywords}")
+        logger.info(f"📚 Research Words: {research_words[:10]}...")
+
+         # 🌍 Get area names from ServiceAreas
+        service_areas = onboarding.service_areas.all()
+        area_names = list(service_areas.values_list("area_name", flat=True))
+        area = ", ".join(area_names)
+        logger.info(f"📍 Area(s): {area}")
+
+
+        # 🧠 AI Content Generation
+        # ai_payload = {
+        #     "keywords": keywords,
+        #     "research_words": research_words,
+        #     "area": area,
+        #     "type": "service_area"
+        # }
+
+        # # 🌐 Fetch current HTML content from service page URL
+        # try:
+        #     page_response = requests.get(service_page.page_url, timeout=20)
+        #     page_response.raise_for_status()
+        #     page_content = page_response.text
+        # except Exception as e:
+        #     logger.exception(f"❌ Failed to fetch page content: {str(e)}")
+        #     task.status = "failed"
+        #     task.ai_response_payload = {"error": str(e)}
+        #     task.save()
+        #     return
+
+        # # 📡 Send to optimization API
+        # api_payload = {
+        #     "keywords": list(keywords),
+        #     "content": page_content,
+        # }
+
+        # 🧠 AI Content Generation
         api_payload = {
-            "keywords": list(keywords),
-            "content": page_content,
+            "keywords": keywords,
+            "research_words": research_words,
+            "area": area,
+            "type": "service_area"
         }
 
         api_response = requests.post(
-            f"{settings.AI_API_DOMAIN}/optimize_blog",
+            # f"{settings.AI_API_DOMAIN}/optimize_blog",
+            f"{settings.AI_API_DOMAIN}/generate_content",
             json=api_payload,
             timeout=60
         )
@@ -500,7 +535,7 @@ def run_seo_optimization(task):
             return
 
         optimized_data = api_response.json()
-        optimized_content = optimized_data.get("optimizedBlog")
+        optimized_content = optimized_data.get("content")
         logger.info("📝 optimized content: %s", optimized_content)
 
         if not optimized_content:
@@ -650,6 +685,7 @@ def run_keyword_optimization(task):
                             KeywordQuestion.objects.filter(keyword=keyword_obj).delete()  # Clear old ones
                             try:
                                 questions = get_paa_questions(new_keyword)
+                                logger.info(f"scrapped questions: {questions} for {new_keyword}")
                                 for q in questions:
                                     KeywordQuestion.objects.create(keyword=keyword_obj, question=q)
                                 logger.info(f"Saved {len(questions)} questions for keyword: {new_keyword}")
