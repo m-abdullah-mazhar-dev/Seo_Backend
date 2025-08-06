@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'seo_services',
     'payment',
     'job',
+    'g_matrix',
 
 
     # AllAuth
@@ -302,3 +303,10 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
+# settings.py
+
+# GOOGLE_REDIRECT_URI = "http://localhost:8000/search-console/oauth2callback/"
+GOOGLE_REDIRECT_URI = "https://fd832385954b.ngrok-free.app/search-console/oauth2callback/"
+# settings.py
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

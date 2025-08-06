@@ -36,4 +36,7 @@ urlpatterns = [
 
     # Required for social login callback (even if unused directly)
     path('accounts/', include('allauth.urls')),
+
+
+    path('search-console/', include('g_matrix.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
