@@ -37,6 +37,9 @@ class Keyword(models.Model):
     keyword = models.CharField(max_length=100)
     clicks = models.PositiveIntegerField(default=0)
     impressions = models.PositiveIntegerField(default=0)
+    ctr = models.FloatField(default=0.0)
+    average_position = models.FloatField(null=True, blank=True)
+    last_updated = models.DateField(null=True, blank=True)
 
     @property
     def ctr(self):
