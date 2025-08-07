@@ -306,7 +306,17 @@ SOCIALACCOUNT_PROVIDERS = {
 # settings.py
 
 # GOOGLE_REDIRECT_URI = "http://localhost:8000/search-console/oauth2callback/"
-GOOGLE_REDIRECT_URI = "https://c4c4eac522cc.ngrok-free.app/search-console/oauth2callback/"
+GOOGLE_REDIRECT_URI = "https://a634dfa5470a.ngrok-free.app/google_analytics/analytics/oauth2callback/"
+
+
+
+
+
 # settings.py
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+
+
+GOOGLE_CLIENT_ID = "278823868205-b8jlvo67fbamsbodpbid0rtuivhrdb34.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET = "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"

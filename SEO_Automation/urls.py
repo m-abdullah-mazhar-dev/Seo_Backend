@@ -39,4 +39,5 @@ urlpatterns = [
 
 
     path('search-console/', include('g_matrix.urls')),
+    path('google_analytics/', include('g_matrix.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
