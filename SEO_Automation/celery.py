@@ -21,8 +21,13 @@ app.conf.beat_schedule = {
     },
     'reactivate-monthly-blog-tasks': {
         'task': 'seo_services.tasks.reactivate_monthly_blog_tasks',
-        'schedule': crontab(),  # every day at midnight
+        'schedule': crontab(),  # Runs every minute
         # 'schedule': crontab(minute=0, hour=0),  # every day at midnight
+    },
+    'process-search-console-keyword-tasks': {
+        'task': 'g_matrix.tasks.sync_all_user_keywords',
+        # 'schedule': crontab(),  # Runs every minute
+        'schedule': crontab(minute=0, hour=0),  # every day at midnight
     },
 }
 
