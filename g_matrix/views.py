@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from django.shortcuts import redirect
 from django.contrib.auth.models import User
 from g_matrix.google_service import get_flow, build_service
+from g_matrix.utils import sync_user_keywords
 from .models import SearchConsoleToken
 from seo_services.models import Keyword, OnboardingForm
 from datetime import datetime, timedelta
@@ -61,38 +62,5 @@ class AuthCallbackView(APIView):
 class SyncKeywordMetricsView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
-        user = request.user
-        try:
-            token = SearchConsoleToken.objects.get(user=user)
-        except SearchConsoleToken.DoesNotExist:
-            return Response({"error": "No token found"}, status=400)
-
-        service = build_service(token.credentials)
-
-        end_date = datetime.today().date()
-        start_date = end_date - timedelta(days=30)
-
-        response = service.searchanalytics().query(
-            siteUrl=token.site_url,
-            body={
-                'startDate': start_date.strftime('%Y-%m-%d'),
-                'endDate': end_date.strftime('%Y-%m-%d'),
-                'dimensions': ['query'],
-                'rowLimit': 5000,
-            }
-        ).execute()
-        # onboarding = OnboardingForm.objects.get(user= user)
-        keyword_map = {k.keyword.lower(): k for k in Keyword.objects.filter(service__onboarding_form__user = user)}
-        print(keyword_map,"-------------------------")
-
-        for row in response.get('rows', []):
-            query = row['keys'][0].lower()
-            if query in keyword_map:
-                k = keyword_map[query]
-                k.clicks = row.get('clicks', 0)
-                k.impressions = row.get('impressions', 0)
-                k.ctr = row.get('ctr', 0)
-                k.average_position = row.get('position', 0)
-                k.save()
-
-        return Response({"message": "✅ Synced keyword metrics from Google Search Console."})
+        result = sync_user_keywords(request.user)
+        return Response(result)
