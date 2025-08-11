@@ -17,6 +17,9 @@ from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from rest_framework.decorators import api_view, permission_classes
+import os
+from google_auth_oauthlib.flow import Flow
+
 
 
 
@@ -323,3 +326,65 @@ def fetch_analytics_data(request):
         }, status=response.status_code)
 
     return Response(response.json())
+
+
+# -----------------------------------
+
+
+def get_flow():
+    return Flow.from_client_secrets_file(
+        os.path.join(settings.BASE_DIR, 'business_profile.json'),
+        scopes=["https://www.googleapis.com/auth/business.manage"],
+        redirect_uri=settings.GOOGLE_BUSINESS_REDIRECT_URI
+    )
+
+class AuthStartView(APIView):
+    # permission_classes = [IsAuthenticated]
+    def get(self, request):
+        flow = get_flow()
+        auth_url, _ = flow.authorization_url(access_type='offline', prompt='consent')
+        return redirect(auth_url)
+
+class AuthCallbackView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        flow = get_flow()
+        flow.fetch_token(authorization_response=request.build_absolute_uri())
+        creds = flow.credentials
+        GoogleBusinessToken.objects.update_or_create(
+            user=request.user,
+            defaults={"credentials": {
+                "token": creds.token,
+                "refresh_token": creds.refresh_token,
+                "token_uri": creds.token_uri,
+                "client_id": creds.client_id,
+                "client_secret": creds.client_secret,
+                "scopes": creds.scopes
+            }}
+        )
+        return Response({"message": "✅ Connected to Google Business Profile (Mock Mode)"})
+
+class ListBusinessesView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        try:
+            token_obj = GoogleBusinessToken.objects.get(user=request.user)
+        except GoogleBusinessToken.DoesNotExist:
+            return Response({"error": "No GBP token found"}, status=400)
+
+        creds_info = token_obj.credentials
+        creds = Credentials(**creds_info)
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            token_obj.credentials['token'] = creds.token
+            token_obj.save()
+
+        if settings.GOOGLE_BUSINESS_USE_MOCK:
+            return Response({
+                "accounts": [{"name": "accounts/1234567890", "accountName": "Test Business"}],
+                "mode": "mock"
+            })
+
+        service = build('mybusinessaccountmanagement', 'v1', credentials=creds)
+        accounts = service.accounts().list().execute()
+        return Response(accounts)
