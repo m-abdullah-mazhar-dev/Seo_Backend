@@ -19,3 +19,9 @@ class GoogleAnalyticsToken(models.Model):
     property_id = models.CharField(max_length=255, null=True, blank=True)
     account_name = models.CharField(max_length=255, null=True, blank=True)
 
+
+
+class GoogleBusinessToken(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    credentials = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
