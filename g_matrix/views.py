@@ -89,7 +89,7 @@ def google_analytics_auth_start(request):
     logger.info("Started GA Auth")
     base_url = "https://accounts.google.com/o/oauth2/v2/auth"
     scope = "https://www.googleapis.com/auth/analytics.readonly"
-    redirect_uri = settings.GOOGLE_REDIRECT_URI
+    redirect_uri = settings.GOOGLE_ANALYTICS_REDIRECT_URI
     print(redirect_uri)
     auth_url = (
         f"{base_url}?client_id={settings.GOOGLE_CLIENT_ID}"
@@ -126,7 +126,7 @@ def analytics_oauth2callback(request):
 
     # Exchange code for tokens
     token_url = "https://oauth2.googleapis.com/token"
-    redirect_uri = settings.GOOGLE_REDIRECT_URI
+    redirect_uri = settings.GOOGLE_ANALYTICS_REDIRECT_URI
     client_id = settings.GOOGLE_CLIENT_ID
     client_secret = settings.GOOGLE_CLIENT_SECRET
 
@@ -285,6 +285,47 @@ def analytics_oauth2callback(request):
 
         }, status=500)
     
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def fetch_analytics_data(request):
+#     try:
+#         token = GoogleAnalyticsToken.objects.get(user=request.user)
+#     except GoogleAnalyticsToken.DoesNotExist:
+#         return Response({"error": "Google Analytics not connected."}, status=400)
+
+#     headers = {
+#         "Authorization": f"Bearer {token.access_token}",
+#         "Content-Type": "application/json"
+#     }
+
+#     if not token.property_id:
+#         return Response({"error": "Google Analytics property not set."}, status=400)
+
+#     body = {
+#         "dateRanges": [{"startDate": "30daysAgo", "endDate": "today"}],
+#         "metrics": [
+#             {"name": "totalUsers"},  # Changed from 'users' to 'totalUsers'
+#             {"name": "sessions"},
+#             {"name": "bounceRate"},
+#             {"name": "averageSessionDuration"},
+#             {"name": "newUsers"},
+#             {"name": "screenPageViews"}
+#         ],
+#         "dimensions": [{"name": "pageTitle"}]
+#     }
+
+#     url = f"https://analyticsdata.googleapis.com/v1beta/properties/{token.property_id}:runReport"
+#     response = requests.post(url, headers=headers, json=body)
+
+#     if response.status_code == 401:
+#         return Response({"error": "Unauthorized. Try reconnecting Google Analytics."}, status=401)
+#     elif response.status_code != 200:
+#         return Response({
+#             "error": "Google Analytics API error",
+#             "details": response.json()
+#         }, status=response.status_code)
+
+#     return Response(response.json())
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def fetch_analytics_data(request):
@@ -293,39 +334,174 @@ def fetch_analytics_data(request):
     except GoogleAnalyticsToken.DoesNotExist:
         return Response({"error": "Google Analytics not connected."}, status=400)
 
+    if not token.property_id:
+        return Response({"error": "Google Analytics property not set."}, status=400)
+
     headers = {
         "Authorization": f"Bearer {token.access_token}",
         "Content-Type": "application/json"
     }
 
-    if not token.property_id:
-        return Response({"error": "Google Analytics property not set."}, status=400)
-
-    body = {
+    # ==============================
+    # 1) HISTORICAL (last 30 days)
+    # ==============================
+    historical_body = {
         "dateRanges": [{"startDate": "30daysAgo", "endDate": "today"}],
         "metrics": [
-            {"name": "totalUsers"},  # Changed from 'users' to 'totalUsers'
-            {"name": "sessions"},
-            {"name": "bounceRate"},
-            {"name": "averageSessionDuration"},
+            {"name": "totalUsers"},
             {"name": "newUsers"},
+            {"name": "sessions"},
+            {"name": "engagedSessions"},
+            {"name": "engagementRate"},
+            {"name": "averageSessionDuration"},
+            {"name": "bounceRate"},
             {"name": "screenPageViews"}
         ],
-        "dimensions": [{"name": "pageTitle"}]
+        "dimensions": [
+            {"name": "pageTitle"},
+            {"name": "pagePath"},
+            {"name": "sessionDefaultChannelGrouping"},
+            {"name": "country"}
+        ]
     }
 
-    url = f"https://analyticsdata.googleapis.com/v1beta/properties/{token.property_id}:runReport"
-    response = requests.post(url, headers=headers, json=body)
+    historical_url = f"https://analyticsdata.googleapis.com/v1beta/properties/{token.property_id}:runReport"
+    hist_resp = requests.post(historical_url, headers=headers, json=historical_body)
+    if hist_resp.status_code != 200:
+        return Response({"error": "Historical API error", "details": hist_resp.json()}, status=hist_resp.status_code)
 
-    if response.status_code == 401:
-        return Response({"error": "Unauthorized. Try reconnecting Google Analytics."}, status=401)
-    elif response.status_code != 200:
-        return Response({
-            "error": "Google Analytics API error",
-            "details": response.json()
-        }, status=response.status_code)
+    hist_data = hist_resp.json().get("rows", [])
 
-    return Response(response.json())
+    # Aggregate totals
+    total_users = new_users = sessions = engaged_sessions = page_views = 0
+    total_duration = total_bounce = 0
+
+    page_stats = {}
+    country_stats = {}
+    channel_stats = {}
+
+    for row in hist_data:
+        dims = row.get("dimensionValues", [])
+        mets = row.get("metricValues", [])
+
+        try:
+            page_title = dims[0]["value"]
+            page_path = dims[1]["value"]
+            channel = dims[2]["value"]
+            country = dims[3]["value"]
+
+            users = int(mets[0]["value"])
+            new_u = int(mets[1]["value"])
+            sess = int(mets[2]["value"])
+            engaged = int(mets[3]["value"])
+            engagement_rate = float(mets[4]["value"])
+            duration = float(mets[5]["value"])
+            bounce = float(mets[6]["value"])
+            views = int(mets[7]["value"])
+
+            # Aggregate totals
+            total_users += users
+            new_users += new_u
+            sessions += sess
+            engaged_sessions += engaged
+            total_duration += duration * sess
+            total_bounce += bounce * sess
+            page_views += views
+
+            # Per-page aggregation
+            if page_path not in page_stats:
+                page_stats[page_path] = {"title": page_title, "views": 0, "bounce_sum": 0, "sessions": 0}
+            page_stats[page_path]["views"] += views
+            page_stats[page_path]["bounce_sum"] += bounce * sess
+            page_stats[page_path]["sessions"] += sess
+
+            # Per-country aggregation
+            country_stats[country] = country_stats.get(country, 0) + users
+
+            # Per-channel aggregation
+            channel_stats[channel] = channel_stats.get(channel, 0) + users
+
+        except (IndexError, ValueError):
+            continue
+
+    avg_session_duration_minutes = round((total_duration / sessions) / 60, 2) if sessions else 0
+    bounce_rate = round((total_bounce / sessions), 2) if sessions else 0
+
+    top_pages = sorted(
+        [{"page_title": v["title"], "page_path": k, "page_views": v["views"],
+          "bounce_rate": round(v["bounce_sum"] / v["sessions"], 2) if v["sessions"] else 0}
+         for k, v in page_stats.items()],
+        key=lambda x: x["page_views"], reverse=True
+    )[:5]
+
+    top_countries = sorted(
+        [{"country": k, "users": v} for k, v in country_stats.items()],
+        key=lambda x: x["users"], reverse=True
+    )[:5]
+
+    traffic_channels = sorted(
+        [{"channel": k, "users": v} for k, v in channel_stats.items()],
+        key=lambda x: x["users"], reverse=True
+    )
+
+    # ==============================
+    # 2) REAL-TIME
+    # ==============================
+    realtime_body = {
+        "metrics": [{"name": "activeUsers"}],
+        "dimensions": [{"name": "unifiedScreenName"}, {"name": "country"}]
+    }
+    realtime_url = f"https://analyticsdata.googleapis.com/v1beta/properties/{token.property_id}:runRealtimeReport"
+    real_resp = requests.post(realtime_url, headers=headers, json=realtime_body)
+    if real_resp.status_code != 200:
+        return Response({"error": "Real-time API error", "details": real_resp.json()}, status=real_resp.status_code)
+
+    realtime_rows = real_resp.json().get("rows", [])
+    realtime_total = 0
+    realtime_pages = {}
+    realtime_countries = {}
+
+    for row in realtime_rows:
+        dims = row.get("dimensionValues", [])
+        mets = row.get("metricValues", [])
+
+        try:
+            page = dims[0]["value"]
+            country = dims[1]["value"]
+            active = int(mets[0]["value"])
+
+            realtime_total += active
+            realtime_pages[page] = realtime_pages.get(page, 0) + active
+            realtime_countries[country] = realtime_countries.get(country, 0) + active
+        except (IndexError, ValueError):
+            continue
+
+    return Response({
+        "summary": {
+            "total_users": total_users,
+            "new_users": new_users,
+            "sessions": sessions,
+            "bounce_rate": bounce_rate,
+            "avg_session_duration_minutes": avg_session_duration_minutes,
+            "page_views": page_views
+        },
+        "top_pages": top_pages,
+        "top_countries": top_countries,
+        "traffic_channels": traffic_channels,
+        "realtime": {
+            "active_users": realtime_total,
+            "top_pages": sorted(
+                [{"page": k, "active_users": v} for k, v in realtime_pages.items()],
+                key=lambda x: x["active_users"], reverse=True
+            ),
+            "countries": sorted(
+                [{"country": k, "active_users": v} for k, v in realtime_countries.items()],
+                key=lambda x: x["active_users"], reverse=True
+            )
+        }
+    })
+
+
 
 
 # -----------------------------------
