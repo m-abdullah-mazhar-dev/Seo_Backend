@@ -1,3 +1,4 @@
+from datetime import datetime
 import stripe
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -244,3 +245,329 @@ def stripe_webhook(request):
             print(f'❌ Subscription {subscription_id} not found in database.')
 
     return HttpResponse(status=200)
+
+
+
+# class SubscriptionBaseView(APIView):
+#     """Base class for subscription operations"""
+    
+#     def _get_current_subscription(self, user):
+#         """Get current subscription or raise 404"""
+#         try:
+#             return UserSubscription.objects.get(user=user)
+#         except UserSubscription.DoesNotExist:
+#             return None
+        
+
+# from datetime import datetime
+# from rest_framework.views import APIView
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# import stripe
+# from django.conf import settings
+
+# stripe.api_key = settings.STRIPE_SECRET_KEY
+
+# class CreateSubscription(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request):
+#         try:
+#             package_id = request.data.get('package_id')
+#             package = Package.objects.get(id=package_id)
+#             user = request.user
+
+#             # Check for existing subscription
+#             if UserSubscription.objects.filter(user=user).exists():
+#                 existing = UserSubscription.objects.get(user=user)
+#                 return Response({
+#                     'error': 'User already has subscription',
+#                     'subscription_id': existing.stripe_subscription_id,
+#                     'status': existing.status
+#                 }, status=400)
+
+#             # Create Stripe Customer
+#             customer = stripe.Customer.create(
+#                 email=user.email,
+#                 name=f"{user.first_name} {user.last_name}",
+#                 metadata={"user_id": user.id}
+#             )
+
+#             # Create Subscription
+#             subscription = stripe.Subscription.create(
+#                 customer=customer.id,
+#                 items=[{'price': package.stripe_price_id}],
+#                 payment_behavior='default_incomplete',
+#                 expand=['latest_invoice.payment_intent'],
+#                 payment_settings={
+#                     'payment_method_types': ['card'],
+#                     'save_default_payment_method': 'on_subscription'
+#                 },
+#                 collection_method='charge_automatically',
+#                 off_session=False
+#             )
+
+#             # Handle payment intent
+#             if not hasattr(subscription.latest_invoice, 'payment_intent'):
+#                 payment_intent = stripe.PaymentIntent.create(
+#                     amount=subscription.latest_invoice.amount_due,
+#                     currency=subscription.latest_invoice.currency,
+#                     customer=customer.id,
+#                     payment_method_types=['card'],
+#                     metadata={
+#                         'subscription_id': subscription.id,
+#                         'invoice_id': subscription.latest_invoice.id
+#                     }
+#                 )
+#                 client_secret = payment_intent.client_secret
+#             else:
+#                 client_secret = subscription.latest_invoice.payment_intent.client_secret
+
+#             # Save to database
+#             UserSubscription.objects.create(
+#                 user=user,
+#                 package=package,
+#                 stripe_customer_id=customer.id,
+#                 stripe_subscription_id=subscription.id,
+#                 status='incomplete',
+#             )
+
+#             return Response({
+#                 'client_secret': client_secret,
+#                 'subscription_id': subscription.id,
+#                 'customer_id': customer.id,
+#                 'requires_action': True
+#             })
+
+#         except Package.DoesNotExist:
+#             return Response({'error': 'Package not found'}, status=404)
+#         except stripe.error.StripeError as e:
+#             return Response({'error': str(e)}, status=400)
+#         except Exception as e:
+#             return Response({'error': f"Server error: {str(e)}"}, status=500)
+        
+#     def get(self, request):
+#         try:
+#             subscription = UserSubscription.objects.get(user=request.user)
+#             return Response({
+#                 'status': subscription.status,
+#                 'package': subscription.package.id,
+#                 'current_period_end': subscription.current_period_end
+#             })
+#         except UserSubscription.DoesNotExist:
+#             return Response({'error': 'No subscription found'}, status=404)
+        
+    
+
+# class UpgradeSubscriptionAPIView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request):
+#         try:
+#             user = request.user
+#             new_package_id = request.data.get('new_package_id')
+#             new_package = Package.objects.get(id=new_package_id)
+            
+#             # Get current subscription
+#             try:
+#                 current_sub = UserSubscription.objects.get(user=user)
+#                 try:
+#                     stripe_sub = stripe.Subscription.retrieve(current_sub.stripe_subscription_id)
+#                 except stripe.error.InvalidRequestError:
+#                     # Subscription doesn't exist in Stripe, treat as new
+#                     return self._create_new_subscription(user, current_sub, new_package)
+#             except UserSubscription.DoesNotExist:
+#                 return Response({'error': 'No active subscription found'}, status=404)
+
+#             # Check if same package
+#             if new_package.id == current_sub.package.id:
+#                 return Response({'error': 'Already subscribed to this package'}, status=400)
+
+#             # Handle based on subscription status
+#             if stripe_sub.status == 'active':
+#                 return self._upgrade_active_subscription(current_sub, new_package, stripe_sub)
+#             else:
+#                 return self._handle_inactive_upgrade(user, current_sub, new_package, stripe_sub)
+
+#         except Package.DoesNotExist:
+#             return Response({'error': 'Package not found'}, status=404)
+#         except Exception as e:
+#             return Response({'error': str(e)}, status=500)
+
+#     def _upgrade_active_subscription(self, current_sub, new_package, stripe_sub):
+#         """Handle upgrade for active subscriptions with proper proration"""
+#         try:
+#             # Update subscription with proration
+#             updated_sub = stripe.Subscription.modify(
+#                 current_sub.stripe_subscription_id,
+#                 items=[{
+#                     'id': stripe_sub['items']['data'][0].id,
+#                     'price': new_package.stripe_price_id,
+#                 }],
+#                 proration_behavior='create_prorations',
+#                 payment_behavior='pending_if_incomplete',
+#                 expand=['latest_invoice.payment_intent']
+#             )
+
+#             # Get payment intent if immediate payment is needed
+#             payment_intent = None
+#             if hasattr(updated_sub, 'latest_invoice') and hasattr(updated_sub.latest_invoice, 'payment_intent'):
+#                 payment_intent = updated_sub.latest_invoice.payment_intent
+
+#             # Update database
+#             current_sub.package = new_package
+#             if getattr(updated_sub, "current_period_end", None):
+#                 current_sub.current_period_end = datetime.fromtimestamp(updated_sub.current_period_end)
+#             current_sub.save()
+
+#             return Response({
+#                 'message': 'Upgrade successful',
+#                 'client_secret': payment_intent.client_secret if payment_intent else None,
+#                 'requires_action': payment_intent is not None,
+#                 'subscription_id': current_sub.stripe_subscription_id,
+#                 'is_prorated': True if payment_intent else False
+#             })
+
+#         except Exception as e:
+#             return Response({'error': f"Upgrade failed: {str(e)}"}, status=500)
+
+#     def _handle_inactive_upgrade(self, user, current_sub, new_package, stripe_sub):
+#         """Handle upgrade for inactive/canceled subscriptions"""
+#         try:
+#             # Only attempt to cancel if subscription exists and isn't already canceled
+#             if stripe_sub.status != 'canceled':
+#                 try:
+#                     stripe.Subscription.delete(current_sub.stripe_subscription_id)
+#                 except stripe.error.InvalidRequestError:
+#                     # Subscription already doesn't exist, proceed with new one
+#                     pass
+
+#             return self._create_new_subscription(user, current_sub, new_package)
+
+#         except Exception as e:
+#             return Response({'error': f"Failed to cancel old subscription: {str(e)}"}, status=500)
+
+#     def _create_new_subscription(self, user, old_sub, new_package):
+#         """Create brand new subscription"""
+#         try:
+#             subscription = stripe.Subscription.create(
+#                 customer=old_sub.stripe_customer_id,
+#                 items=[{'price': new_package.stripe_price_id}],
+#                 payment_behavior='default_incomplete',
+#                 expand=['latest_invoice.payment_intent'],
+#                 payment_settings={
+#                     'payment_method_types': ['card'],
+#                     'save_default_payment_method': 'on_subscription'
+#                 },
+#                 collection_method='charge_automatically',
+#                 off_session=False
+#             )
+
+#             # Get payment intent
+#             payment_intent = None
+#             if hasattr(subscription, 'latest_invoice') and hasattr(subscription.latest_invoice, 'payment_intent'):
+#                 payment_intent = subscription.latest_invoice.payment_intent
+#             else:
+#                 payment_intent = stripe.PaymentIntent.create(
+#                     amount=subscription.latest_invoice.amount_due,
+#                     currency=subscription.latest_invoice.currency,
+#                     customer=old_sub.stripe_customer_id,
+#                     payment_method_types=['card'],
+#                     metadata={
+#                         'subscription_id': subscription.id,
+#                         'invoice_id': subscription.latest_invoice.id
+#                     }
+#                 )
+
+#             # Update database
+#             old_sub.package = new_package
+#             old_sub.stripe_subscription_id = subscription.id
+#             old_sub.status = 'incomplete'
+#             if getattr(subscription, "current_period_end", None):
+#                 old_sub.current_period_end = datetime.fromtimestamp(subscription.current_period_end)
+#             old_sub.save()
+
+#             return Response({
+#                 'client_secret': payment_intent.client_secret,
+#                 'subscription_id': subscription.id,
+#                 'requires_action': True,
+#                 'is_new_subscription': True
+#             })
+
+#         except Exception as e:
+#             return Response({'error': f"Failed to create new subscription: {str(e)}"}, status=500)
+
+
+# from django.views.decorators.csrf import csrf_exempt
+# from django.http import HttpResponse
+# from datetime import datetime
+
+# @csrf_exempt
+# def stripe_webhook(request):
+#     payload = request.body
+#     sig_header = request.META['HTTP_STRIPE_SIGNATURE']
+#     endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
+
+#     try:
+#         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
+#     except ValueError:
+#         return HttpResponse(status=400)
+#     except stripe.error.SignatureVerificationError:
+#         return HttpResponse(status=400)
+
+#     # Handle subscription updates
+#     if event['type'] in ['customer.subscription.updated', 'customer.subscription.created']:
+#         subscription = event['data']['object']
+#         try:
+#             user_sub = UserSubscription.objects.get(stripe_subscription_id=subscription.id)
+#             user_sub.status = subscription.status
+#             # Only set if Stripe sent it
+#             if 'current_period_end' in subscription and subscription['current_period_end']:
+#                 user_sub.current_period_end = datetime.fromtimestamp(subscription['current_period_end'])
+            
+#             # Special handling for upgrades
+#             if event['type'] == 'customer.subscription.updated':
+#                 print(f"Subscription updated: {subscription.id}")
+#             user_sub.save()
+#         except UserSubscription.DoesNotExist:
+#             pass
+
+#         # Handle invoice payment success
+#     if event['type'] == 'invoice.payment_succeeded':
+#         invoice = event['data']['object']
+#         if invoice.get('subscription'):
+#             try:
+#                 user_sub = UserSubscription.objects.get(stripe_subscription_id=invoice['subscription'])
+#                 user_sub.status = 'active'
+                
+#                 # Check if this is an upgrade invoice
+#                 if invoice.billing_reason == 'subscription_update':
+#                     print(f"Upgrade proration invoice paid: {invoice.amount_paid/100}")
+                
+#                 user_sub.save()
+#             except UserSubscription.DoesNotExist:
+#                 pass
+#     elif event['type'] == 'payment_intent.succeeded':
+#         pi = event['data']['object']
+#         sub_id = pi.metadata.get('subscription_id')
+#         if sub_id:
+#             try:
+#                 user_sub = UserSubscription.objects.get(stripe_subscription_id=sub_id)
+#                 user_sub.status = 'active'
+#                 user_sub.save()
+#             except UserSubscription.DoesNotExist:
+#                 pass
+
+
+#     # Handle payment failures
+#     elif event['type'] == 'invoice.payment_failed':
+#         invoice = event['data']['object']
+#         if invoice.get('subscription'):
+#             try:
+#                 user_sub = UserSubscription.objects.get(stripe_subscription_id=invoice['subscription'])
+#                 user_sub.status = 'past_due'
+#                 user_sub.save()
+#             except UserSubscription.DoesNotExist:
+#                 pass
+
+#     return HttpResponse(status=200)
