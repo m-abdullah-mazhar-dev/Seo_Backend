@@ -11,6 +11,7 @@ class Package(models.Model):
     service_area_limit = models.IntegerField()
     business_location_limit = models.IntegerField()
     blog_limit = models.IntegerField()
+    google_post_limit = models.IntegerField()
     keyword_limit = models.IntegerField()
     seo_optimization_limit = models.IntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -101,7 +102,8 @@ class SEOTask(models.Model):
     TASK_TYPES = (
         ('seo_optimization', 'SEO Optimization'),
         ('blog_writing', 'Blog Writing'),
-        ('keyword_optimization', 'Keyword Optimization')
+        ('keyword_optimization', 'Keyword Optimization'),
+        ('gb_post', 'Google Post')
     )
 
     STATUS_CHOICES = (
@@ -148,3 +150,16 @@ class BlogImage(models.Model):
 
     def __str__(self):
         return f"Image for {self.blog.title}"
+    
+
+
+class GooglePost(models.Model):
+    seo_task = models.OneToOneField(SEOTask, on_delete=models.CASCADE, related_name='google_post')
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    area = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Google Post: {self.title}"
+
