@@ -627,3 +627,52 @@ class SubscriptionDetailsAPIView(APIView):
             return Response({"error": str(e)}, status=400)
         except Exception as e:
             return Response({"error": f"Server error: {str(e)}"}, status=500)
+        
+
+
+
+class CancelSubscriptionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        try:
+            # 1️⃣ Get subscription record from DB
+            subscription = UserSubscription.objects.filter(user=user).first()
+            if not subscription:
+                return Response({"error": "No subscription found for this user."}, status=404)
+
+            if not subscription.stripe_subscription_id:
+                return Response({"error": "No Stripe subscription ID found in DB."}, status=400)
+
+            try:
+                # 2️⃣ Try to cancel immediately on Stripe
+                canceled_sub = stripe.Subscription.delete(subscription.stripe_subscription_id)
+
+                # 3️⃣ Update DB only if Stripe returned a valid subscription
+                subscription.status = "canceled"
+                if getattr(canceled_sub, "current_period_end", None):
+                    subscription.current_period_end = datetime.fromtimestamp(
+                        canceled_sub.current_period_end
+                    )
+                subscription.save()
+
+                return Response({
+                    "message": "Subscription canceled successfully.",
+                    "stripe_status": canceled_sub.status,
+                    "current_period_end": subscription.current_period_end
+                })
+
+            except stripe.error.InvalidRequestError as e:
+                # This happens if subscription ID does not exist on Stripe
+                subscription.status = "error"
+                subscription.save()
+                return Response({
+                    "error": "Stripe subscription not found or already canceled.",
+                    "details": str(e)
+                }, status=404)
+
+        except stripe.error.StripeError as e:
+            return Response({"error": f"Stripe error: {str(e)}"}, status=400)
+        except Exception as e:
+            return Response({"error": f"Server error: {str(e)}"}, status=500)
