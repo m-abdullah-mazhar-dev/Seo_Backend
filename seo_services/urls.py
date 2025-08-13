@@ -18,5 +18,8 @@ urlpatterns = [
     path("stop/",StopAutomation.as_view()),
     path("start/",StartAutomation.as_view()),
 
-    path("user_details/", AdminClientListAPIView.as_view())
+    path("user_details/", AdminClientListAPIView.as_view()),
+
+
+    path("company_details/", CompanyDetailsAPIView.as_view()),
 ]

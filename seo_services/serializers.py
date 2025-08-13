@@ -293,3 +293,40 @@ class AdminClientDetailSerializer(serializers.ModelSerializer):
                 "business_locations": BusinessLocationSerializer(onboarding.locations.all(), many=True).data
             }
         return {}
+    
+
+
+class CompanyDetailsSerializer(serializers.ModelSerializer):
+    package = PackageSerializer(read_only=True)
+    services = ServiceSerializer(many=True, read_only=True)
+    service_areas = ServiceAreaSerializer(many=True, read_only=True)
+    business_locations = BusinessLocationSerializer(many=True, source='locations', read_only=True)
+    blogs = serializers.SerializerMethodField()
+    gbp_status = serializers.SerializerMethodField()
+    wp_status = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OnboardingForm
+        fields = [
+            'id', 'company_name', 'phone_number', 'address', 'email',
+            'about_business', 'package', 'services', 'service_areas',
+            'business_locations', 'blogs', 'gbp_status', 'wp_status', 'payment_status'
+        ]
+
+    def get_blogs(self, obj):
+        blogs = Blog.objects.filter(seo_task__user=obj.user, seo_task__task_type="blog_writing")
+        return BlogSerializer(blogs, many=True).data
+
+    def get_gbp_status(self, obj):
+        # Placeholder — replace with actual GBP connection check
+        return "Connected" if hasattr(obj.user, 'google_business_profile') else "Not Connected"
+
+    def get_wp_status(self, obj):
+        return "Connected" if hasattr(obj.user, 'wordpress_connection') else "Not Connected"
+
+    def get_payment_status(self, obj):
+        try:
+            return obj.user.usersubscription.status
+        except UserSubscription.DoesNotExist:
+            return "No Subscription"

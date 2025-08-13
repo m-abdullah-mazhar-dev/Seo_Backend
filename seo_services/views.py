@@ -128,6 +128,20 @@ class OnBoardingFormAPIView(APIView):
         )
 
 
+
+
+class CompanyDetailsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        onboarding_form = OnboardingForm.objects.filter(user=request.user).first()
+        if not onboarding_form:
+            return Response({"message": "No company details found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = CompanyDetailsSerializer(onboarding_form)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 def generate_wordpress_token(username, application_password):
     credentials = f"{username}:{application_password}"
     token = base64.b64encode(credentials.encode()).decode()
