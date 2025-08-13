@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import stripe
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -571,3 +571,59 @@ def stripe_webhook(request):
 #                 pass
 
 #     return HttpResponse(status=200)
+
+
+
+class SubscriptionDetailsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            user_sub = UserSubscription.objects.select_related("package").get(user=request.user)
+            stripe_sub = stripe.Subscription.retrieve(user_sub.stripe_subscription_id)
+
+            # Try to get period dates from subscription root or fallback to items
+            current_period_start = stripe_sub.get("current_period_start") or \
+                stripe_sub["items"]["data"][0].get("current_period_start")
+            current_period_end = stripe_sub.get("current_period_end") or \
+                stripe_sub["items"]["data"][0].get("current_period_end")
+
+            if not current_period_start or not current_period_end:
+                return Response({
+                    "plan_name": user_sub.package.name,
+                    "status": stripe_sub["status"],
+                    "message": "No active billing period for this subscription."
+                }, status=200)
+
+            # Convert timestamps
+            current_period_start = datetime.fromtimestamp(current_period_start, tz=timezone.utc)
+            current_period_end = datetime.fromtimestamp(current_period_end, tz=timezone.utc)
+
+            # Calculate usage
+            total_days = (current_period_end - current_period_start).days
+            days_used = max(0, (datetime.now(timezone.utc) - current_period_start).days)
+            days_remaining = max(0, (current_period_end - datetime.now(timezone.utc)).days)
+
+            # Package details
+            package = user_sub.package
+            interval = stripe_sub["items"]["data"][0]["price"]["recurring"]["interval"]
+
+            data = {
+                "plan_name": package.name,
+                "price": float(package.price),
+                "interval": interval,
+                "purchased_on": current_period_start.strftime("%Y-%m-%d"),
+                "expires_on": current_period_end.strftime("%Y-%m-%d"),
+                "status": stripe_sub["status"],
+                "days_used": days_used,
+                "days_remaining": days_remaining,
+                "total_days": total_days,
+            }
+            return Response(data)
+
+        except UserSubscription.DoesNotExist:
+            return Response({"error": "No active subscription found."}, status=404)
+        except stripe.error.StripeError as e:
+            return Response({"error": str(e)}, status=400)
+        except Exception as e:
+            return Response({"error": f"Server error: {str(e)}"}, status=500)
