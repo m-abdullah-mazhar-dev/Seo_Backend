@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup
 from rest_framework import serializers
 
 from payment.models import UserSubscription
@@ -236,13 +237,32 @@ class BlogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Blog
-        fields = ['title', 'content', 'category', 'image']
+        fields = ['id','wp_post_id','title', 'content', 'category', 'image']
 
     def get_image(self, obj):
         image = obj.images.first()
         return image.image_url if image else None
 
 
+
+class BlogEditSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Blog
+        fields = ['title', 'content', 'category']
+        extra_kwargs = {
+            'content': {'required': False},  # Make fields optional for partial updates
+            'title': {'required': False},
+            'category': {'required': False}
+        }
+    def validate_content(self, value):
+        if value:
+            try:
+                soup = BeautifulSoup(value, 'html.parser')
+                if not soup.find('html') or not soup.find('body'):
+                    raise serializers.ValidationError("Content must be complete HTML document")
+            except Exception as e:
+                raise serializers.ValidationError(f"Invalid HTML content: {str(e)}")
+        return value
 
 
 class AdminClientDetailSerializer(serializers.ModelSerializer):

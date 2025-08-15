@@ -870,6 +870,122 @@ class MyBlogsView(APIView):
         serializer = BlogSerializer(blogs, many=True)
         return Response({"success": True, "message": "Blogs retrieved successfully.", "data": serializer.data})
     
+
+# views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from django.shortcuts import get_object_or_404
+from .models import Blog
+from .serializers import BlogEditSerializer
+import requests
+from bs4 import BeautifulSoup
+
+class BlogEditView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, blog_id):
+        blog = get_object_or_404(Blog, id=blog_id, seo_task__user=request.user)
+        serializer = BlogEditSerializer(blog, data=request.data, partial=True)
+        
+        if not serializer.is_valid():
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update local DB first
+        updated_blog = serializer.save()
+        
+        # Then update WordPress via API
+        wp_conn = blog.seo_task.service_page.wordpress_connection
+        update_response = self.update_blog_on_wordpress(updated_blog, wp_conn)
+        
+        if update_response.status_code in [200, 201]:
+            return Response({
+                "success": True,
+                "message": "Blog updated successfully",
+                "data": BlogEditSerializer(updated_blog).data
+            })
+        
+        return Response({
+            "success": False,
+            "message": "WordPress update failed",
+            "wordpress_error": update_response.json()
+        }, status=status.HTTP_400_BAD_REQUEST)
+    def update_blog_on_wordpress(self, blog, wp_conn):
+        headers = {
+            'Authorization': f'Basic {wp_conn.access_token}',
+            'Content-Type': 'application/json',
+        }
+        
+        # Parse existing HTML
+        soup = BeautifulSoup(blog.content, 'html.parser')
+        
+        # Get the new title from serializer (might be updated or same as before)
+        new_title = blog.title
+        
+        # Update the HTML structure properly:
+        # 1. Remove all existing titles
+        for title_tag in soup.find_all('title'):
+            title_tag.decompose()
+        
+        # 2. Add the new title
+        new_title_tag = soup.new_tag('title')
+        new_title_tag.string = new_title
+        soup.head.append(new_title_tag)
+        
+        # 3. Update h1 if exists (optional but recommended)
+        h1_tag = soup.find('h1')
+        if h1_tag:
+            h1_tag.string = new_title
+        
+        # Prepare update data
+        update_data = {
+            "title": new_title,
+            "content": str(soup),  # Use the modified HTML
+            "status": "publish"
+        }
+    
+    # Handle category if needed
+        if blog.category:
+            category_id = self.get_or_create_category(wp_conn, blog.category)
+            if category_id:
+                update_data["categories"] = [category_id]
+        
+        response = requests.post(
+            f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{blog.wp_post_id}",
+            headers=headers,
+            json=update_data
+        )
+    
+        return response
+
+    def get_or_create_category(self, wp_conn, category_name):
+        """Helper function to get or create WordPress category"""
+        headers = {
+            'Authorization': f'Basic {wp_conn.access_token}',
+            'Content-Type': 'application/json',
+        }
+        
+        # First try to find existing category
+        search_response = requests.get(
+            f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/categories?search={category_name}",
+            headers=headers
+        )
+        
+        if search_response.status_code == 200 and search_response.json():
+            return search_response.json()[0]['id']
+        
+        # Create new category if not found
+        create_response = requests.post(
+            f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/categories",
+            headers=headers,
+            json={"name": category_name}
+        )
+        
+        if create_response.status_code in [200, 201]:
+            return create_response.json().get('id')
+        
+        return None
     
 # ----------------
 

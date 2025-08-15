@@ -145,7 +145,10 @@ def upload_blog_to_wordpress(blog, wp_conn):
     logger.debug(f"Post upload response: {response.status_code} - {response.text}")
 
     if response.status_code in [200, 201]:
-        logger.info("✅ Blog uploaded to WordPress successfully.")
+        wp_post_id = response.json().get("id")
+        blog.wp_post_id = wp_post_id
+        blog.save()
+        logger.info(f"✅ Blog uploaded to WordPress successfully. wp_id: {wp_post_id}")
     else:
         logger.error(f"❌ Failed to upload blog: {response.text}")
 
