@@ -142,6 +142,7 @@ class Blog(models.Model):
     slug = models.SlugField(unique=True, blank=True, null=True)
     content = models.TextField()  # This will be the generated_content
     category = models.CharField(max_length=100, null=True, blank=True)  # Optional
+    wp_post_id = models.IntegerField(null=True, blank=True) 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

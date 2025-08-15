@@ -14,6 +14,7 @@ urlpatterns = [
     path('my-service-areas/', MyServiceAreasView.as_view(), name='my-service-areas'),
     path('my-keywords/', MyKeywordsView.as_view(), name='my-keywords'),
     path('my-blogs/', MyBlogsView.as_view(), name='my-blogs'),
+    path('edit-blog/<int:blog_id>/', BlogEditView.as_view(), name='edit-blog'),
 
     path("stop/",StopAutomation.as_view()),
     path("start/",StartAutomation.as_view()),
