@@ -128,6 +128,11 @@ class SEOTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    wp_page_url = models.URLField(null=True, blank=True)  # Store the final serice page WordPress URL
+    clicks = models.PositiveIntegerField(default=0)
+    impressions = models.PositiveIntegerField(default=0)
+    last_metrics_update = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return f"{self.user.email} - {self.get_task_type_display()} - {self.status} - {self.is_active}"
 
