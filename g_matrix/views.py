@@ -1,14 +1,15 @@
 # search_console/views.py
 
+from urllib.parse import urlparse
 from django.http import JsonResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import redirect
 from django.contrib.auth.models import User
-from g_matrix.google_service import get_flow, build_service
+from g_matrix.google_service import get_flow_search, build_service
 from g_matrix.utils import sync_user_keywords
 from .models import *
-from seo_services.models import Keyword, OnboardingForm
+from seo_services.models import Keyword, OnboardingForm, SEOTask
 from datetime import datetime, timedelta
 from googleapiclient.discovery import build
 from rest_framework.permissions import IsAuthenticated
@@ -19,22 +20,24 @@ from django.contrib.auth.decorators import login_required
 from rest_framework.decorators import api_view, permission_classes
 import os
 from google_auth_oauthlib.flow import Flow
+from django.db.models import Q
 
 
 
 
 
-class AuthStartView(APIView):
+
+class SearchAuthStartView(APIView):
     def get(self, request):
-        flow = get_flow()
+        flow = get_flow_search()
         auth_url, _ = flow.authorization_url(prompt='consent')
         return redirect(auth_url)
 
 
-class AuthCallbackView(APIView):
+class SearchAuthCallbackView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
-        flow = get_flow()
+        flow = get_flow_search()
         flow.fetch_token(authorization_response=request.build_absolute_uri())
         creds = flow.credentials
 
@@ -76,8 +79,100 @@ class SyncKeywordMetricsView(APIView):
         result = sync_user_keywords(request.user)
         return Response(result)
 
+class ServicePageMetricsView(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        user = request.user
+        try:
+            token = SearchConsoleToken.objects.get(user=user)
+        except SearchConsoleToken.DoesNotExist:
+            return Response({"error": "Search Console not connected"}, status=400)
 
+        tasks = SEOTask.objects.filter(
+            user=user,
+            wp_page_url__isnull=False
+        ).exclude(wp_page_url='')
+
+        if not tasks.exists():
+            return Response({"message": "No service pages with URLs found"}, status=200)
+
+        service = build_service(token.credentials)
+        end_date = datetime.today().date()
+        start_date = end_date - timedelta(days=30)
+
+        # Extract domain from site_url (handles both domain and URL-prefix properties)
+        if token.site_url.startswith('sc-domain:'):
+            # For domain properties like 'sc-domain:example.com'
+            domain = token.site_url.replace('sc-domain:', 'https://')
+        else:
+            # For URL-prefix properties like 'https://example.com/'
+            domain = token.site_url.rstrip('/')
+
+        # Build full URL expressions
+        page_expressions = []
+        for task in tasks:
+            if task.wp_page_url:
+                parsed = urlparse(task.wp_page_url)
+                if parsed.netloc:  # If URL already has domain
+                    page_expressions.append(task.wp_page_url)
+                else:  # If just path, prepend domain
+                    page_expressions.append(f"{domain}{parsed.path}")
+
+        # Remove duplicates
+        page_expressions = list(set(page_expressions))
+        print(f"Querying expressions: {page_expressions}")
+
+        try:
+            response = service.searchanalytics().query(
+                siteUrl=token.site_url,
+                body={
+                    'startDate': start_date.strftime('%Y-%m-%d'),
+                    'endDate': end_date.strftime('%Y-%m-%d'),
+                    'dimensions': ['page'],
+                    'dimensionFilterGroups': [{
+                        'filters': [{
+                            'dimension': 'page',
+                            'operator': 'equals',
+                            'expression': expr
+                        } for expr in page_expressions]
+                    }]
+                }
+            ).execute()
+
+            updated_tasks = []
+            if 'rows' in response:
+                for row in response.get('rows', []):
+                    page_url = row['keys'][0]  # Full URL returned
+                    path = urlparse(page_url).path
+                    
+                    # Match tasks by either full URL or path
+                    matching_tasks = tasks.filter(
+                        Q(wp_page_url__icontains=page_url) | 
+                        Q(wp_page_url__endswith=path)
+                    )
+                    
+                    for task in matching_tasks:
+                        task.clicks = row.get('clicks', 0)
+                        task.impressions = row.get('impressions', 0)
+                        task.last_metrics_update = timezone.now()
+                        task.save()
+                        updated_tasks.append({
+                            'task_id': task.id,
+                            'page_url': task.wp_page_url,
+                            'clicks': task.clicks,
+                            'impressions': task.impressions
+                        })
+
+            return Response({
+                'updated_count': len(updated_tasks),
+                'tasks': updated_tasks,
+                'queried_expressions': page_expressions,
+                'found_rows': len(response.get('rows', []))
+            })
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
 
 import logging

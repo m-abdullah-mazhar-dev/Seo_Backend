@@ -1,3 +1,4 @@
+from datetime import timezone
 import requests
 from bs4 import BeautifulSoup
 from django.utils.text import slugify
@@ -185,7 +186,16 @@ def upload_service_page_to_wordpress(service_page, optimized_html):
         logger.info(f"🔼 WordPress Page Upload Response: ")
 
         if response.status_code in [200, 201]:
-            logger.info("✅ Service page content uploaded successfully.")
+            page_data = response.json()
+            final_url = page_data.get('link')
+            
+            # Update the SEOTask with the WordPress URL
+            service_page.seo_tasks.filter(optimized_content=optimized_html).update(
+                wp_page_url=final_url,
+                last_metrics_update=timezone.now()
+            )
+            logger.info(f"✅ Service page uploaded to: {final_url}")
+            return final_url
         else:
             logger.error(f"❌ Failed to upload service page content: {response.text}")
 

@@ -572,7 +572,12 @@ def run_seo_optimization(task):
         logger.info(f"✅ SEO Optimization Task {task.id} completed and saved.")
 
         try:
-            upload_service_page_to_wordpress(task.service_page, task.optimized_content)
+           final_url = upload_service_page_to_wordpress(task.service_page, task.optimized_content)
+           if final_url:
+                task.wp_page_url = final_url
+                task.save()
+                logger.info(f"✅ FInal url saved.{final_url}")
+
         
         except Exception as e:
             logger.exception(f"❌ Wordpress blog upload failed: {str(e)}")

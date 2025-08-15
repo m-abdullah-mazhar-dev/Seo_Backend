@@ -10,11 +10,12 @@ from django.conf import settings
 CLIENT_SECRET_FILE = os.path.join(settings.BASE_DIR, 'client_secrets.json')
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
 
-def get_flow():
+def get_flow_search():
+    print("IN search console flow ")
     return Flow.from_client_secrets_file(
         CLIENT_SECRET_FILE,
         scopes=SCOPES,
-        redirect_uri=settings.GOOGLE_REDIRECT_URI
+        redirect_uri=settings.GOOGLE_SEARCH_REDIRECT_URI
     )
 
 def build_service(credentials_info):

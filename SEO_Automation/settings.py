@@ -305,7 +305,8 @@ SOCIALACCOUNT_PROVIDERS = {
 
 # settings.py
 
-# GOOGLE_REDIRECT_URI = "http://localhost:8000/search-console/oauth2callback/"
+GOOGLE_SEARCH_REDIRECT_URI = "https://31a16f0059d9.ngrok-free.app/search-console/oauth2callback/"
+
 GOOGLE_ANALYTICS_REDIRECT_URI = "https://673104fe8d43.ngrok-free.app/google_analytics/analytics/oauth2callback/"
 
 GOOGLE_BUSINESS_REDIRECT_URI = "http://127.0.0.1:8000/google-business/profile/auth/callback/"
