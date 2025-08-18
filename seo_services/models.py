@@ -11,7 +11,7 @@ class Package(models.Model):
     service_area_limit = models.IntegerField()
     business_location_limit = models.IntegerField()
     blog_limit = models.IntegerField()
-    google_post_limit = models.IntegerField()
+    gmb_post_limit = models.IntegerField(default=5)
     keyword_limit = models.IntegerField()
     seo_optimization_limit = models.IntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -158,12 +158,13 @@ class BlogImage(models.Model):
         return f"Image for {self.blog.title}"
     
 
-
-class GooglePost(models.Model):
-    seo_task = models.OneToOneField(SEOTask, on_delete=models.CASCADE, related_name='google_post')
+class GMBPost(models.Model):
+    seo_task = models.ForeignKey(SEOTask, on_delete=models.CASCADE, related_name='gmb_post')
     content = models.TextField()
-    area = models.CharField(max_length=255)
+    area = models.CharField(max_length=200)
+    keywords = models.JSONField(default=list)
+    research_words = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
-        return f"Google Post for {self.seo_task.service_page} - {self.created_at}"
+        return f"GMB Post for {self.area} - {self.created_at}"

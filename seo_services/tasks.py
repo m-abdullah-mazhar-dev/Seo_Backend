@@ -24,7 +24,7 @@ import requests
 from celery import shared_task
 from django.utils import timezone
 from .models import SEOTask, OnboardingForm, Keyword, Blog, BlogImage
-from .views import run_blog_writing, run_keyword_optimization, run_seo_optimization  # or move logic here if you prefer
+from .views import run_blog_writing, run_gmb_post_creation, run_keyword_optimization, run_seo_optimization  # or move logic here if you prefer
 from datetime import timedelta
 from django.conf import settings
 
@@ -42,15 +42,21 @@ def process_due_seo_tasks():
         logger.info(f"📌 Processing Task ID {task.id} for user {task.user.email}")
         try:
             if task.task_type == 'seo_optimization':
-                logger.info("⏭️ Running SEO Optimization task")
-                run_seo_optimization(task)
+                pass 
+                # logger.info("⏭️ Running SEO Optimization task")
+                # run_seo_optimization(task)
             elif task.task_type == 'blog_writing':
-                logger.info("✍️ Running blog writing task...")
-                run_blog_writing(task)
+                pass 
+                # logger.info("✍️ Running blog writing task...")
+                # run_blog_writing(task)
             
             elif task.task_type == 'keyword_optimization':
                 logger.info("🔍 Running keyword optimization task...")
                 run_keyword_optimization(task)
+            elif task.task_type == 'gmb_post':
+                logger.info("📢 Running GMB post creation task...")
+                run_gmb_post_creation(task)
+
         except Exception as e:
             logger.error(f"❌ Failed processing task ID {task.id}: {str(e)}")
 
