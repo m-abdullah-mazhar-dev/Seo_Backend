@@ -103,7 +103,7 @@ class SEOTask(models.Model):
         ('seo_optimization', 'SEO Optimization'),
         ('blog_writing', 'Blog Writing'),
         ('keyword_optimization', 'Keyword Optimization'),
-        ('gb_post', 'Google Post')
+        ('gmb_post', 'Google My Business Post')
     )
 
     STATUS_CHOICES = (
@@ -161,11 +161,9 @@ class BlogImage(models.Model):
 
 class GooglePost(models.Model):
     seo_task = models.OneToOneField(SEOTask, on_delete=models.CASCADE, related_name='google_post')
-    title = models.CharField(max_length=255)
     content = models.TextField()
-    area = models.CharField(max_length=255, null=True, blank=True)
+    area = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
-
+    
     def __str__(self):
-        return f"Google Post: {self.title}"
-
+        return f"Google Post for {self.seo_task.service_page} - {self.created_at}"
