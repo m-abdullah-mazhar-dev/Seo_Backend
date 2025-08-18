@@ -217,6 +217,7 @@ class SubmitServicePageAPI(APIView):
         user = request.user
         page_url = request.data.get("page_url")
         blog_required = request.data.get("blog_required", False)
+        gmbp_required = request.data.get("gmbp_required", False)
 
         if not page_url:
             return Response({"error": "Page URL is required."}, status=400)
@@ -269,6 +270,13 @@ class SubmitServicePageAPI(APIView):
             task_type="keyword_optimization",
             next_run=next_run
         )
+        if gmbp_required:
+            SEOTask.objects.create(
+                user=user,
+                service_page=service_page,
+                task_type="gmb_post",
+                next_run=next_run
+            )
 
 
         return Response({"message": "Service Page & Tasks created successfully."})
@@ -774,6 +782,148 @@ def run_keyword_optimization(task):
         task.ai_response_payload = {"error": str(e)}
         task.save()
 
+
+
+
+def run_gmb_post_creation(task):
+    try:
+        user = task.user
+        onboarding = OnboardingForm.objects.filter(user=user).first()
+        
+        if not onboarding:
+            logger.warning("⚠ No onboarding form found for GMB post creation.")
+            task.status = "failed"
+            task.save()
+            return
+
+        # Monthly check
+        current_month = timezone.now().strftime("%Y-%m")
+        package_limit = onboarding.package.gmb_post_limit if onboarding.package else 5  # Default limit
+        
+        if task.month_year != current_month:
+            task.count_this_month = 0
+            task.month_year = current_month
+
+        # Check if limit reached
+        if task.count_this_month >= package_limit:
+            logger.warning("🚫 GMB post limit reached for this month.")
+            task.status = "skipped"
+            task.save()
+            return
+
+        # Get service areas for location
+        service_areas = onboarding.service_areas.all()
+        if not service_areas.exists():
+            logger.warning("⚠ No service areas found for GMB post.")
+            task.status = "failed"
+            task.save()
+            return
+        
+        area_names = list(service_areas.values_list("area_name", flat=True))
+        primary_area = area_names[0]  # Use the first area as primary
+
+        # Get all services and their keywords
+        services = onboarding.services.all()
+        
+        # We'll create a separate post for each service
+        for service in services:
+            keywords = service.keywords.all()
+            if not keywords.exists():
+                logger.warning(f"⚠ No keywords found for service {service.service_name}")
+                continue
+
+            keyword_list = list(keywords.values_list("keyword", flat=True))
+            
+            # Get research questions for these keywords
+            questions = KeywordQuestion.objects.filter(keyword__in=keywords)
+            research_words = list(questions.values_list("question", flat=True))
+            
+            logger.info(f"🔑 Keywords for GMB post ({service.service_name}): {keyword_list}")
+            logger.info(f"🧠 Research words: {research_words[:10]}...")
+
+            # Prepare payload for AI API
+            ai_payload = {
+                "keywords": keyword_list,
+                "research_words": research_words,
+                "area": primary_area,
+                "type": "gmb_post"
+            }
+
+            # Call AI API
+            try:
+                response = requests.post(
+                    f"{settings.AI_API_DOMAIN}/generate_content",
+                    json=ai_payload,
+                    timeout=60
+                )
+                
+                if response.status_code != 200:
+                    logger.error(f"❌ AI API error for service {service.service_name}: {response.text}")
+                    continue
+                
+                data = response.json()
+                post_content = data.get("content", "").strip()
+                logger.info(f"Found --------------- Content {post_content}")
+                
+                if not post_content:
+                    logger.warning(f"⚠ Empty content received for service {service.service_name}")
+                    continue
+
+                # Save the GMB post
+                GMBPost.objects.create(
+                    seo_task=task,
+                    content=post_content,
+                    area=primary_area,
+                    keywords=keyword_list,
+                    research_words=research_words
+                )
+
+                logger.info(f"✅ GMB post created for service {service.service_name}")
+
+            except Exception as e:
+                logger.error(f"❌ Error creating GMB post for service {service.service_name}: {str(e)}")
+                continue
+
+        # Update task status
+        task.ai_request_payload = ai_payload  # Save the last payload (for debugging)
+        task.ai_response_payload = data if 'data' in locals() else None
+        task.status = "completed"
+        task.last_run = timezone.now()
+        task.next_run = timezone.now() + timedelta(days=onboarding.package.interval if onboarding.package else 7)
+        task.count_this_month += 1
+        task.save()
+
+        # Create next task if limit not reached
+        if task.count_this_month < package_limit:
+            SEOTask.objects.create(
+                user=user,
+                service_page=task.service_page,
+                task_type='gmb_post',
+                next_run=task.next_run,
+                status='pending',
+                count_this_month=task.count_this_month,
+                month_year=current_month,
+                is_active=True
+            )
+            logger.info("✅ Created next GMB post task")
+        else:
+            SEOTask.objects.create(
+                user=user,
+                service_page=task.service_page,
+                task_type='gmb_post',
+                next_run=None,
+                status='pending',
+                count_this_month=0,
+                month_year=current_month,
+                is_active=True
+            )
+            logger.info("⏸ GMB post limit reached, next task paused")
+
+    except Exception as e:
+        logger.exception(f"❌ Exception in run_gmb_post_creation: {str(e)}")
+        task.status = "failed"
+        task.ai_response_payload = {"error": str(e)}
+        task.save()
 
 
 class StopAutomation(APIView):
