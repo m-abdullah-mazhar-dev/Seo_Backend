@@ -43,12 +43,12 @@ def process_due_seo_tasks():
         try:
             if task.task_type == 'seo_optimization':
                 pass 
-                # logger.info("⏭️ Running SEO Optimization task")
-                # run_seo_optimization(task)
+                logger.info("⏭️ Running SEO Optimization task")
+                run_seo_optimization(task)
             elif task.task_type == 'blog_writing':
                 pass 
-                # logger.info("✍️ Running blog writing task...")
-                # run_blog_writing(task)
+                logger.info("✍️ Running blog writing task...")
+                run_blog_writing(task)
             
             elif task.task_type == 'keyword_optimization':
                 logger.info("🔍 Running keyword optimization task...")
