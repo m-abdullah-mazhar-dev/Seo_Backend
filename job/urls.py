@@ -5,7 +5,23 @@ urlpatterns = [
     path('job_onboarding/',CreateJobOnboardingFormAPIView.as_view() , name = "job_onboarding"),
     path('job_onboarding/<int:pk>/',CreateJobOnboardingFormAPIView.as_view() , name = "job_onboarding"),
     path('submit_job_page/',SubmitJobPageAPI.as_view() , name = "submit_job_url"),
-    path('job-closed/',JobClosedAPIView.as_view() , name = "job-close"),
-    path("feedback/<uuid:token>/<str:answer>/", FeedbackAPI.as_view(), name="api-feedback"),
+    # path('job-closed/',JobClosedAPIView.as_view() , name = "job-close"),
+    # path("feedback/<uuid:token>/<str:answer>/", FeedbackAPI.as_view(), name="api-feedback"),
+
+
+
+    # CRM integration endpoints
+    path('crm/types/',  CRMTypeListAPIView.as_view(), name='crm-types'),
+    path('crm/connections/',  CRMConnectionListAPIView.as_view(), name='crm-connections'),
+    path('crm/connections/create/',  CRMConnectionCreateAPIView.as_view(), name='crm-connection-create'),
+    path('crm/oauth/init/',  OAuthInitAPIView.as_view(), name='crm-oauth-init'),
+    path('crm/oauth/callback/',  OAuthCallbackAPIView.as_view(), name='crm-oauth-callback'),
+    path('crm/connections/<int:pk>/',  CRMConnectionDetailAPIView.as_view(), name='crm-connection-detail'),
+    path('crm/connections/<int:connection_id>/jobs/',  CRMJobCreateAPIView.as_view(), name='crm-job-create'),
+    path('crm/connections/<int:connection_id>/jobs/<str:job_id>/close/',  CRMJobCloseAPIView.as_view(), name='crm-job-close'),
+    
+    # Webhook and feedback endpoints
+    path('webhook/job-closed/<uuid:secret_token>/',  CRMWebhookAPIView.as_view(), name='crm-webhook'),
+    path('feedback/<uuid:token>/<str:answer>/',  FeedbackAPI.as_view(), name='api-feedback'),
 
 ]

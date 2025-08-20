@@ -3,6 +3,8 @@ from django.contrib.auth import get_user_model
 import uuid
 from seo_services.models import WordPressConnection
 User = get_user_model()
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 # Create your models here.
 
@@ -135,6 +137,90 @@ class JobPage(models.Model):
         return self.page_url
 
 
+class CRMType(models.Model):
+    CRM_PROVIDERS = [
+        ('hubspot', 'HubSpot'),
+        ('pipedrive', 'Pipedrive'),
+        ('zoho', 'Zoho CRM'),
+        ('salesforce', 'Salesforce'),
+    ]
+    
+    name = models.CharField(max_length=100)
+    provider = models.CharField(max_length=20, choices=CRM_PROVIDERS)
+    auth_type = models.CharField(max_length=10, choices=[
+        ('oauth', 'OAuth'),
+        ('api_key', 'API Key'),
+        ('both', 'Both')
+    ])
+    oauth_client_id = models.CharField(max_length=255, blank=True, null=True)
+    oauth_client_secret = models.CharField(max_length=255, blank=True, null=True)
+    oauth_authorize_url = models.URLField(blank=True, null=True)
+    oauth_token_url = models.URLField(blank=True, null=True)
+    api_key_help_text = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return self.name
+    
+    def save(self, *args, **kwargs):
+        # Set default URLs based on provider
+        if not self.oauth_authorize_url:
+            if self.provider == 'hubspot':
+                self.oauth_authorize_url = 'https://app.hubspot.com/oauth/authorize'
+            elif self.provider == 'zoho':
+                self.oauth_authorize_url = 'https://accounts.zoho.com/oauth/v2/auth'
+                
+        if not self.oauth_token_url:
+            if self.provider == 'hubspot':
+                self.oauth_token_url = 'https://api.hubapi.com/oauth/v1/token'
+            elif self.provider == 'zoho':
+                self.oauth_token_url = 'https://accounts.zoho.com/oauth/v2/token'
+                
+        super().save(*args, **kwargs)
+
+class CRMConnection(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='crm_connections')
+    crm_type = models.ForeignKey(CRMType, on_delete=models.CASCADE)
+    connection_name = models.CharField(max_length=100)
+    
+    # API Key authentication
+    api_key = models.CharField(max_length=255, blank=True, null=True)
+    api_domain = models.CharField(max_length=255, blank=True, null=True)  # For Pipedrive
+    
+    # OAuth authentication
+    oauth_access_token = models.CharField(max_length=500, blank=True, null=True)
+    oauth_refresh_token = models.CharField(max_length=500, blank=True, null=True)
+    oauth_token_expiry = models.DateTimeField(blank=True, null=True)
+    
+    # Webhook details
+    webhook_secret_token = models.UUIDField(default=uuid.uuid4, unique=True)
+    webhook_url = models.URLField(blank=True, null=True)
+    
+    # Connection status
+    is_connected = models.BooleanField(default=False)
+    last_sync = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def clean(self):
+        if self.crm_type.auth_type in ['api_key', 'both'] and not self.api_key:
+            raise ValidationError("API key is required for this CRM type")
+        
+        if self.crm_type.auth_type in ['oauth', 'both'] and not self.oauth_access_token:
+            raise ValidationError("OAuth access token is required for this CRM type")
+    
+    def save(self, *args, **kwargs):
+        if not self.webhook_url:
+            self.webhook_url = f"https://abdullahmazhar-dev.app.n8n.cloud/webhook/job-closed/{self.webhook_secret_token}"
+        super().save(*args, **kwargs)
+    
+    def is_token_expired(self):
+        if self.oauth_token_expiry:
+            return timezone.now() > self.oauth_token_expiry
+        return False
+    
+    def __str__(self):
+        return f"{self.user.first_name} - {self.crm_type.name}"
 
 #
 class ClientFeedback(models.Model):
@@ -145,3 +231,4 @@ class ClientFeedback(models.Model):
     is_satisfied = models.BooleanField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    crm_connection = models.ForeignKey(CRMConnection, on_delete=models.SET_NULL, null=True, blank=True)
