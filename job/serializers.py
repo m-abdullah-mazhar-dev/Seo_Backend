@@ -7,6 +7,7 @@ class JobOnboardingFormSerializer(serializers.ModelSerializer):
     class Meta:
         model = JobOnboardingForm
         fields = '__all__'
+        read_only_fields = ['user']
 
 class CRMTypeSerializer(serializers.ModelSerializer):
     class Meta:

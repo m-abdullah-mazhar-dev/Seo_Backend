@@ -3,8 +3,9 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from job.models import *
-from job.utility import generate_structured_job_html, upload_job_post_to_wordpress
+from job.utility import create_initial_job_blog_task, generate_structured_job_html, upload_job_post_to_wordpress
 from seo_services.models import WordPressConnection
+from seo_services.upload_blog_to_wp import upload_blog_to_wordpress
 from .serializers import JobOnboardingFormSerializer
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
@@ -17,6 +18,10 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.utils import timezone
+import logging
+from bs4 import BeautifulSoup
+import re
+logger = logging.getLogger(__name__)
 
 
 class CreateJobOnboardingFormAPIView(APIView):
@@ -24,18 +29,27 @@ class CreateJobOnboardingFormAPIView(APIView):
 
     def post(self, request, format=None):
         serializer = JobOnboardingFormSerializer(data=request.data)
+        user = request.user
         if serializer.is_valid():
-            job_form = serializer.save()
+            job_form = serializer.save(user = user)
 
-            job_page = JobPage.objects.filter(user=request.user).last()
-            if not job_page:
-                return Response({"error": "No job page submitted for this user."}, status=400)
+            # job_page = JobPage.objects.filter(user=request.user).last()
+            # if not job_page:
+            #     return Response({"error": "No job page submitted for this user."}, status=400)
             
+            # try:
+            #     html_content = generate_structured_job_html(job_form)
+            #     upload_job_post_to_wordpress(job_form, job_page, html_content)
+            # except Exception as e:
+            #     return Response({"error": f"Failed to publish job: {str(e)}"}, status=500)
+
             try:
-                html_content = generate_structured_job_html(job_form)
-                upload_job_post_to_wordpress(job_form, job_page, html_content)
+                task = create_initial_job_blog_task(user, job_form)
+                print("task created successfully ")
             except Exception as e:
-                return Response({"error": f"Failed to publish job: {str(e)}"}, status=500)
+                return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
+            
+
 
             return Response({
                 "message": "Onboarding form created successfully",
@@ -587,3 +601,260 @@ class CRMJobCloseAPIView(APIView):
             return Response(result, status=status.HTTP_200_OK)
         else:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        
+
+# -------------- Job Tasks 
+
+def extract_keywords_from_job_form(job_form):
+    """Extract relevant keywords from JobOnboardingForm fields"""
+    keywords = []
+    
+    # Basic company info
+    keywords.extend([
+        job_form.company_name,
+        "trucking company",
+        "CDL jobs",
+        "truck driver jobs"
+    ])
+    
+    # Vehicle and equipment keywords
+    if job_form.transmission_automatic:
+        keywords.append("automatic transmission trucks")
+    if job_form.transmission_manual:
+        keywords.append("manual transmission trucks")
+    if job_form.equip_fridge:
+        keywords.append("truck fridge")
+    if job_form.equip_inverter:
+        keywords.append("power inverter")
+    if job_form.equip_microwave:
+        keywords.append("microwave equipped")
+    if job_form.equip_led:
+        keywords.append("LED lighting")
+    if job_form.equip_apu:
+        keywords.append("APU equipped")
+    
+    # Job type keywords
+    if job_form.position_1099:
+        keywords.append("1099 trucking jobs")
+    if job_form.position_w2:
+        keywords.append("W2 trucking jobs")
+    
+    # Benefits keywords
+    if job_form.benefit_weekly_deposits:
+        keywords.append("weekly pay")
+    if job_form.referral_bonus:
+        keywords.append("referral bonus")
+    if job_form.fuel_card:
+        keywords.append("fuel card")
+    if job_form.detention_layover_pay:
+        keywords.append("detention pay")
+    if job_form.offer_cash_advances:
+        keywords.append("cash advances")
+    
+    # Area keywords
+    if job_form.primary_running_areas:
+        areas = job_form.primary_running_areas.split(',')
+        for area in areas[:3]:  # Take first 3 areas
+            keywords.append(f"trucking jobs {area.strip()}")
+            keywords.append(f"CDL jobs {area.strip()}")
+    
+    # Equipment specifics
+    keywords.append(job_form.hauling_equipment)
+    keywords.append(f"{job_form.truck_make_year} trucks")
+    
+    # Clean and deduplicate
+    keywords = [k.strip().lower() for k in keywords if k and k.strip()]
+    keywords = list(set(keywords))
+    
+    return keywords[:20]  # Limit to 20 most relevant keywords
+
+def generate_research_questions(keywords):
+    """Generate research questions based on keywords"""
+    research_words = []
+    
+    for keyword in keywords:
+        # Basic questions about each keyword
+        research_words.extend([
+            f"What is {keyword}?",
+            f"How does {keyword} work in trucking?",
+            f"Benefits of {keyword} for truck drivers",
+            f"Requirements for {keyword}",
+            f"Best practices for {keyword}"
+        ])
+    
+    return research_words[:15]  # Limit research questions
+
+def run_job_blog_writing(task):
+    try:
+        user = task.user
+        
+        # Get job onboarding form
+        job_onboarding = task.job_onboarding
+        if not job_onboarding:
+            # Try to get from user if not directly linked to task
+            try:
+                job_onboarding = user.jobonboardingform
+            except:
+                job_onboarding = None
+        
+        if not job_onboarding:
+            logger.warning("⚠ No job onboarding form found.")
+            task.status = "failed"
+            task.save()
+            return
+
+        # Monthly check
+        current_month = timezone.now().strftime("%Y-%m")
+        onboarding_form = user.onboardingform.last()
+        package = onboarding_form.package
+        if not package:
+            logger.warning("⚠ No package found for user.")
+            task.status = "failed"
+            task.save()
+            return
+
+        package_limit = package.blog_limit
+        
+        if task.month_year != current_month:
+            task.count_this_month = 0
+            task.month_year = current_month
+
+        # Check if limit reached
+        if task.count_this_month >= package_limit:
+            logger.warning("🚫 Job blog limit reached for this month.")
+            task.status = "skipped"
+            task.save()
+            return
+
+        # Extract keywords from job form
+        keywords = extract_keywords_from_job_form(job_onboarding)
+        if not keywords:
+            logger.warning("⚠ No keywords extracted from job form.")
+            task.status = "failed"
+            task.save()
+            return
+
+        logger.info(f"🔑 Extracted Job Keywords: {keywords}")
+
+        # Generate research questions
+        research_words = generate_research_questions(keywords)
+        logger.info(f"🧠 Research words: {research_words[:10]}...")
+
+        # Determine area - use primary running areas or company address
+        area = "trucking industry"
+        if job_onboarding.primary_running_areas:
+            areas = job_onboarding.primary_running_areas.split(',')
+            area = areas[0].strip() if areas else "trucking industry"
+        elif job_onboarding.company_address:
+            # Extract city/state from address if possible
+            area = "trucking industry"
+
+        # Prepare AI payload
+        ai_payload = {
+            "keywords": keywords,
+            "research_words": research_words,
+            "area": area,
+            "type": "blog"
+        }
+
+        logger.info(f"📤 Sending payload to AI API: {ai_payload}")
+
+        # Call AI API
+        response = requests.post(
+            f"{settings.AI_API_DOMAIN}/generate_content",
+            json=ai_payload,
+            timeout=60
+        )
+
+        if response.status_code != 200:
+            logger.error(f"❌ AI response error: {response.text}")
+            task.status = "failed"
+            task.ai_request_payload = ai_payload
+            task.ai_response_payload = {"error": response.text}
+            task.save()
+            return
+        
+        data = response.json()
+        blog_html = data.get("content", "").strip()
+        image_url = data.get("imageUrl", "")
+
+        # Clean HTML content
+        blog_html = re.sub(r"^html\s*", "", blog_html)
+        blog_html = re.sub(r"$", "", blog_html.strip())
+        
+        if not blog_html:
+            logger.warning("⚠ Blog content is empty after cleaning.")
+            task.status = "failed"
+            task.save()
+            return
+
+        # Extract title
+        soup = BeautifulSoup(blog_html, "html.parser")
+        titles = soup.find_all("title")
+        title = titles[0].text.strip() if titles else f"{job_onboarding.company_name} Trucking Opportunities"
+
+        logger.info(f"✅ Job Blog generated: {title}")
+
+        # Save blog
+        job_blog = JobBlog.objects.create(
+            job_task=task,
+            title=title,
+            content=blog_html
+        )
+        
+        # ✅ Save image if available
+        if image_url:
+            JobBlogImage.objects.create(
+                job_blog=job_blog,
+                image_url=image_url
+            )
+            logger.info(f"🖼 Job blog image saved: {image_url}")
+
+        # Update task
+        task.ai_request_payload = ai_payload
+        task.ai_response_payload = data
+        task.last_run = timezone.now()
+        task.next_run = timezone.now() + timedelta(days=package.interval)
+        task.count_this_month += 1
+        task.status = "completed"
+        task.save()
+
+        logger.info(f"✅ Job Blog Task {task.id} completed successfully.")
+
+        # WordPress upload (you'll provide this function later)
+        if hasattr(user, 'wordpress_connection'):
+            upload_blog_to_wordpress(job_blog, user.wordpress_connection, is_job_blog=True)
+
+        # Auto-create next task if limit not reached
+        if task.count_this_month < package_limit:
+            JobTask.objects.create(
+                user=user,
+                job_onboarding=job_onboarding,
+                task_type='job_blog_writing',
+                next_run=task.next_run,
+                status='pending',
+                count_this_month=task.count_this_month,
+                month_year=current_month,
+                is_active=True
+            )
+            logger.info(f"✅ New job blog writing task created")
+        else:
+            JobTask.objects.create(
+                user=user,
+                job_onboarding=job_onboarding,
+                task_type='job_blog_writing',
+                next_run=None,
+                status='pending',
+                count_this_month=0,
+                month_year=current_month,
+                is_active=True
+            )
+            logger.info(f"⏸ Job blog limit reached. Next task paused until new month.")
+
+        
+
+    except Exception as e:
+        logger.exception(f"❌ Exception in run_job_blog_writing for task {task.id}: {str(e)}")
+        task.status = "failed"
+        task.ai_response_payload = {"error": str(e)}
+        task.save()

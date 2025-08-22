@@ -1,6 +1,8 @@
 import requests
 from django.utils.text import slugify
 
+from job.models import JobTask
+
 
 
 def get_or_create_category(wp_conn, slug, name=None, description=""):
@@ -172,3 +174,28 @@ def generate_structured_job_html(job_form):
     """
 
     return html.strip()
+import logging
+from django.utils import timezone
+logger = logging.getLogger(__name__)
+
+def create_initial_job_blog_task(user, job_onboarding):
+    onboarding_form = user.onboardingform.last()  # get the latest
+    if not onboarding_form or not onboarding_form.package:
+        return None
+    
+    package = onboarding_form.package 
+    current_month = timezone.now().strftime("%Y-%m")
+    
+    task = JobTask.objects.create(
+        user=user,
+        job_onboarding=job_onboarding,
+        task_type='job_blog_writing',
+        next_run=timezone.now(),
+        status='pending',
+        count_this_month=0,
+        month_year=current_month,
+        is_active=True
+    )
+    
+    logger.info(f"✅ Initial job blog task created for user {user.email}")
+    return task
