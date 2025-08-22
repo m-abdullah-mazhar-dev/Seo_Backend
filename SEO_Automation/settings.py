@@ -72,9 +72,9 @@ INSTALLED_APPS = [
 
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -205,15 +205,28 @@ SIMPLE_JWT = {
 #     "http://127.0.0.1:9000",
 # ]
 
+CORS_ALLOW_ALL_ORIGINS = True
 
-CORS_ALLOW_ALL_ORIGINS = True  # for local testing
 
-CORS_ALLOW_METHODS = list(default_methods) + [
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
     "PATCH",
+    "POST",
+    "PUT",
 ]
 
-CORS_ALLOW_HEADERS = list(default_headers) + [
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
     "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
 ]
 
 
@@ -229,9 +242,6 @@ ALLOWED_HOSTS = ['*']
 AI_API_DOMAIN = "http://127.0.0.1:5000"
 
 
-CORS_ALLOW_HEADERS = list(default_headers) + [
-    "authorization",
-]
 
 from django.conf import settings
 print(settings.CORS_ALLOW_METHODS)
