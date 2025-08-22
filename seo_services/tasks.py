@@ -33,35 +33,35 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# @shared_task
-# def process_due_seo_tasks():
-#     logger.info(f"🔄SEO tasks started.")
-#     now = timezone.now()
-#     tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
-#     # tasks = SEOTask.objects.filter(status='pending')
-#     logger.info(f"🔄 Found {tasks.count()} due SEO tasks to process.")
+@shared_task
+def process_due_seo_tasks():
+    logger.info(f"🔄SEO tasks started.")
+    now = timezone.now()
+    tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
+    # tasks = SEOTask.objects.filter(status='pending')
+    logger.info(f"🔄 Found {tasks.count()} due SEO tasks to process.")
 
-#     for task in tasks:
-#         logger.info(f"📌 Processing Task ID {task.id} for user {task.user.email}")
-#         try:
-#             if task.task_type == 'seo_optimization':
-#                 pass 
-#                 logger.info("⏭️ Running SEO Optimization task")
-#                 run_seo_optimization(task)
-#             elif task.task_type == 'blog_writing':
-#                 pass 
-#                 logger.info("✍️ Running blog writing task...")
-#                 run_blog_writing(task)
+    for task in tasks:
+        logger.info(f"📌 Processing Task ID {task.id} for user {task.user.email}")
+        try:
+            if task.task_type == 'seo_optimization':
+                pass 
+                logger.info("⏭️ Running SEO Optimization task")
+                run_seo_optimization(task)
+            elif task.task_type == 'blog_writing':
+                pass 
+                logger.info("✍️ Running blog writing task...")
+                run_blog_writing(task)
             
-#             elif task.task_type == 'keyword_optimization':
-#                 logger.info("🔍 Running keyword optimization task...")
-#                 run_keyword_optimization(task)
-#             elif task.task_type == 'gmb_post':
-#                 logger.info("📢 Running GMB post creation task...")
-#                 run_gmb_post_creation(task)
+            elif task.task_type == 'keyword_optimization':
+                logger.info("🔍 Running keyword optimization task...")
+                run_keyword_optimization(task)
+            elif task.task_type == 'gmb_post':
+                logger.info("📢 Running GMB post creation task...")
+                run_gmb_post_creation(task)
 
-#         except Exception as e:
-#             logger.error(f"❌ Failed processing task ID {task.id}: {str(e)}")
+        except Exception as e:
+            logger.error(f"❌ Failed processing task ID {task.id}: {str(e)}")
 
 
 # tasks.py
