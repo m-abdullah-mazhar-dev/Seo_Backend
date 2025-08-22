@@ -69,7 +69,7 @@ logger = logging.getLogger(__name__)
 #         print("❌ Failed to upload blog:", response.text)
 
 
-def upload_blog_to_wordpress(blog, wp_conn):
+def upload_blog_to_wordpress(blog, wp_conn,is_job_blog=False):
     logger.info("Starting blog upload process...")
 
     headers = {
@@ -78,10 +78,29 @@ def upload_blog_to_wordpress(blog, wp_conn):
     }
     logger.debug(f"Request headers prepared: {headers}")
 
-    # Get image URL from BlogImage
-    image_obj = blog.images.first()
-    image_url = image_obj.image_url if image_obj else None
-    logger.debug(f"Image URL extracted: {image_url}")
+    # # Get image URL from BlogImage
+    # image_obj = blog.images.first()
+    # image_url = image_obj.image_url if image_obj else None
+    # logger.debug(f"Image URL extracted: {image_url}")
+
+    image_url = None
+    if is_job_blog:
+        # For JobBlog, check if images relationship exists
+        if hasattr(blog, 'images'):  # Try the related_name first
+            image_obj = blog.images.first()
+            image_url = image_obj.image_url if image_obj else None
+        else:
+            # Last resort: check if there's any JobBlogImage linked to this blog
+            try:
+                from .models import JobBlogImage
+                image_obj = JobBlogImage.objects.filter(job_blog=blog).first()
+                image_url = image_obj.image_url if image_obj else None
+            except:
+                image_url = None
+    else:
+        # For regular Blog, use the BlogImage relationship
+        image_obj = blog.images.first() if hasattr(blog, 'images') else None
+        image_url = image_obj.image_url if image_obj else None
 
     # Get content and title
     soup = BeautifulSoup(blog.content, 'html.parser')
@@ -94,8 +113,13 @@ def upload_blog_to_wordpress(blog, wp_conn):
 
     slug = slugify(title)
     logger.debug(f"Slug generated: {slug}")
-    category_id = get_or_create_category(wp_conn, slug="blogs", name="Blogs", description="All blog articles")
+    # category_id = get_or_create_category(wp_conn, slug="blogs", name="Blogs", description="All blog articles")
 
+
+    # Get or create category - you might want different categories for job blogs
+    category_name = "Trucking Jobs" if is_job_blog else "Blogs"
+    category_slug = "trucking-jobs" if is_job_blog else "blogs"
+    category_id = get_or_create_category(wp_conn, slug=category_slug, name=category_name, description=f"{category_name} articles")
 
     # Upload the blog post to WordPress
     post_data = {
@@ -146,8 +170,16 @@ def upload_blog_to_wordpress(blog, wp_conn):
 
     if response.status_code in [200, 201]:
         wp_post_id = response.json().get("id")
-        blog.wp_post_id = wp_post_id
-        blog.save()
+        # blog.wp_post_id = wp_post_id
+        # blog.save()
+
+        # Save WordPress ID to appropriate blog model
+        if is_job_blog:
+            blog.wp_post_id = wp_post_id
+            blog.save()
+        else:
+            blog.wp_post_id = wp_post_id
+            blog.save()
         logger.info(f"✅ Blog uploaded to WordPress successfully. wp_id: {wp_post_id}")
     else:
         logger.error(f"❌ Failed to upload blog: {response.text}")

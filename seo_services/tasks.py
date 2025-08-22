@@ -23,6 +23,9 @@ import logging
 import requests
 from celery import shared_task
 from django.utils import timezone
+
+from job.models import JobTask
+from job.views import run_job_blog_writing
 from .models import SEOTask, OnboardingForm, Keyword, Blog, BlogImage
 from .views import run_blog_writing, run_gmb_post_creation, run_keyword_optimization, run_seo_optimization  # or move logic here if you prefer
 from datetime import timedelta
@@ -30,36 +33,56 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+# @shared_task
+# def process_due_seo_tasks():
+#     logger.info(f"🔄SEO tasks started.")
+#     now = timezone.now()
+#     tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
+#     # tasks = SEOTask.objects.filter(status='pending')
+#     logger.info(f"🔄 Found {tasks.count()} due SEO tasks to process.")
+
+#     for task in tasks:
+#         logger.info(f"📌 Processing Task ID {task.id} for user {task.user.email}")
+#         try:
+#             if task.task_type == 'seo_optimization':
+#                 pass 
+#                 logger.info("⏭️ Running SEO Optimization task")
+#                 run_seo_optimization(task)
+#             elif task.task_type == 'blog_writing':
+#                 pass 
+#                 logger.info("✍️ Running blog writing task...")
+#                 run_blog_writing(task)
+            
+#             elif task.task_type == 'keyword_optimization':
+#                 logger.info("🔍 Running keyword optimization task...")
+#                 run_keyword_optimization(task)
+#             elif task.task_type == 'gmb_post':
+#                 logger.info("📢 Running GMB post creation task...")
+#                 run_gmb_post_creation(task)
+
+#         except Exception as e:
+#             logger.error(f"❌ Failed processing task ID {task.id}: {str(e)}")
+
+
+# tasks.py
 @shared_task
-def process_due_seo_tasks():
-    logger.info(f"🔄SEO tasks started.")
+def process_due_job_tasks():
+    logger.info(f"🔄 Job tasks started.")
     now = timezone.now()
-    tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
-    # tasks = SEOTask.objects.filter(status='pending')
-    logger.info(f"🔄 Found {tasks.count()} due SEO tasks to process.")
+    tasks = JobTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
+    logger.info(f"🔄 Found {tasks.count()} due Job tasks to process.")
 
     for task in tasks:
-        logger.info(f"📌 Processing Task ID {task.id} for user {task.user.email}")
+        logger.info(f"📌 Processing Job Task ID {task.id} for user {task.user.email}")
         try:
-            if task.task_type == 'seo_optimization':
-                pass 
-                logger.info("⏭️ Running SEO Optimization task")
-                run_seo_optimization(task)
-            elif task.task_type == 'blog_writing':
-                pass 
-                logger.info("✍️ Running blog writing task...")
-                run_blog_writing(task)
-            
-            elif task.task_type == 'keyword_optimization':
-                logger.info("🔍 Running keyword optimization task...")
-                run_keyword_optimization(task)
-            elif task.task_type == 'gmb_post':
-                logger.info("📢 Running GMB post creation task...")
-                run_gmb_post_creation(task)
-
+            if task.task_type == 'job_blog_writing':
+                logger.info("✍ Running job blog writing task...")
+                run_job_blog_writing(task)
+            elif task.task_type == 'job_gmb_post':
+                logger.info("📢 Running job GMB post task...")
+                # Similar implementation for GMB posts
         except Exception as e:
-            logger.error(f"❌ Failed processing task ID {task.id}: {str(e)}")
-
+            logger.error(f"❌ Failed processing job task ID {task.id}: {str(e)}")
 
 @shared_task
 def reactivate_monthly_blog_tasks():

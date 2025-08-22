@@ -9,6 +9,7 @@ from django.utils import timezone
 # Create your models here.
 
 class JobOnboardingForm(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="jobonboardingform")
     # -------------------- Basic Company Details --------------------
     company_name = models.CharField(max_length=255)
     company_website = models.URLField(blank=True, null=True)
@@ -135,7 +136,57 @@ class JobPage(models.Model):
 
     def __str__(self):
         return self.page_url
+    
+def default_month_year():
+    return timezone.now().strftime('%Y-%m')
 
+class JobTask(models.Model):
+    TASK_TYPES = (
+        ('job_blog_writing', 'Job Blog Writing'),
+        ('job_gmb_post', 'Job GMB Post'),
+    )
+    
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    )
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='job_tasks')
+    job_onboarding = models.ForeignKey('JobOnboardingForm', on_delete=models.CASCADE, null=True, blank=True)
+    task_type = models.CharField(max_length=50, choices=TASK_TYPES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    ai_request_payload = models.JSONField(null=True, blank=True)
+    ai_response_payload = models.JSONField(null=True, blank=True)
+    last_run = models.DateTimeField(null=True, blank=True)
+    next_run = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    count_this_month = models.IntegerField(default=0)
+    month_year = models.CharField(max_length=7, default=default_month_year)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.email} - {self.get_task_type_display()} - {self.status}"
+    
+
+
+class JobBlog(models.Model):
+    job_task = models.OneToOneField('JobTask', on_delete=models.CASCADE, related_name='blog')
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    wp_post_id = models.CharField(max_length=100, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class JobBlogImage(models.Model):
+    job_blog = models.ForeignKey(JobBlog, on_delete=models.CASCADE, related_name='images')
+    image_url = models.URLField()
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Image for {self.job_blog.title}"
 
 class CRMType(models.Model):
     CRM_PROVIDERS = [
@@ -232,3 +283,4 @@ class ClientFeedback(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     crm_connection = models.ForeignKey(CRMConnection, on_delete=models.SET_NULL, null=True, blank=True)
+
