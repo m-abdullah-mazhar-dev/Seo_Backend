@@ -19,7 +19,7 @@ app.conf.beat_schedule = {
         'schedule': crontab(),  # Runs every minute
         'args': (),  # You can pass arguments if needed
     },
-    'process-due-seo-tasks-every-minute': {
+    'process-due-job-tasks-every-minute': {
         'task': 'seo_services.tasks.process_due_job_tasks',
         'schedule': crontab(),  # Runs every minute
         'args': (),  # You can pass arguments if needed
