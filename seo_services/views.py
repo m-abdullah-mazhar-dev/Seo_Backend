@@ -283,10 +283,177 @@ class SubmitServicePageAPI(APIView):
 
 
 
+# def run_blog_writing(task):
+#     logger = logging.getLogger(__name__)
+#     try:
+#         service = task.service_page
+#         user = task.user
+
+#         onboarding = OnboardingForm.objects.filter(user=user).first()
+#         if not onboarding:
+#             logger.warning("⚠️ No onboarding form found.")
+#             task.status = "failed"
+#             task.save()
+#             return
+
+#         # keywords = Keyword.objects.filter(
+#         #     service__onboarding_form=onboarding
+#         # ).values_list('keyword', flat=True)
+
+#         keywords_objects = Keyword.objects.filter(
+#             service__onboarding_form=onboarding
+#         )
+
+#         keywords = list(keywords_objects.values_list("keyword", flat=True))
+
+#         logger.info(f"🔑 Keywords for blog generation: {list(keywords)}")
+
+#         if not keywords_objects.exists():
+#             task.status = "failed"
+#             task.save()
+#             return
+        
+#         # research_words = []
+#         # for keyword in keywords_objects:
+#         #     keyword_questions = keyword.questions.values_list("question", flat=True)
+#         #     research_words.extend(keyword_questions)
+
+#         # research_words = list(set(research_words))  # Remove duplicates
+#         # logger.info(f"🧠 Research words: {research_words[:25]}... (total: {len(research_words)})")
+
+#         ai_payload = {
+#             "keywords": list(keywords),
+#             # "research_words": research_words,
+#             "type": "blog"
+#         }
+        
+
+#         response = requests.post(
+#             # f"{settings.AI_API_DOMAIN}/generate_blog_and_image",
+#             f"{settings.AI_API_DOMAIN}/generate_content",
+#             json=ai_payload,
+#             timeout=60
+#         )
+
+#         if response.status_code != 200:
+#             logger.error(f"❌ AI response error: {response.text}")
+#             task.status = "failed"
+#             task.ai_request_payload = ai_payload
+#             task.ai_response_payload = {"error": response.text}
+#             task.save()
+#             return
+        
+#         data = response.json()
+
+#         blog_html = data.get("content", "").strip()
+
+        
+
+#         image_url_raw = data.get("imageUrl", "")
+#         image_url = re.sub(r"win\s+dows", "windows", image_url_raw)
+
+#         # # Remove ```html markdown wrapper
+#         # if blog_html.startswith("```html"):
+#         #     blog_html = blog_html.replace("```html", "").replace("```", "").strip()
+#         # Remove markdown fences
+#         blog_html = re.sub(r"^```html\s*", "", blog_html)
+#         blog_html = re.sub(r"```$", "", blog_html.strip())
+#         if not blog_html:
+#             logger.warning("⚠️ Blog content is empty after cleaning.")
+
+
+#         # Extract <title>
+#         soup = BeautifulSoup(blog_html, "html.parser")
+#         # title = soup.title.string.strip() if soup.title else "Untitled Blog"
+#         titles = soup.find_all("title")
+#         title = titles[0].text.strip() if titles else "Untitled Blog"
+
+#         logger.info("✅ Blog HTML received")
+#         logger.info("📝 Blog HTML: %s", blog_html)
+#         logger.info(f"🖼️ Image URL: {image_url}")
+#         logger.info(f"📝 Blog Title: {title}")
+
+     
+
+#         blog = Blog.objects.create(
+#             seo_task=task,
+#             title=title,
+#             content=blog_html
+#         )
+
+#         if image_url:
+#             BlogImage.objects.create(blog=blog, image_url=image_url)
+
+#         # 🔁 Monthly count logic
+#         current_month = timezone.now().strftime('%Y-%m')
+#         if task.month_year != current_month:
+#             task.count_this_month = 0
+#             task.month_year = current_month
+
+#         task.count_this_month += 1
+
+#         interval_days = onboarding.package.interval if onboarding.package else 7
+#         task.ai_request_payload = ai_payload
+#         task.ai_response_payload = data
+#         task.last_run = timezone.now()
+#         task.next_run = timezone.now() + timedelta(days=interval_days)
+#         # task.next_run = timezone.now() + timezone.timedelta(minutes=3)
+#         task.status = "completed"
+#         task.save()
+
+
+#         logger.info(f"✅ Task {task.id} completed successfully.")
+#         try:
+#             upload_blog_to_wordpress(blog, task.service_page.wordpress_connection)
+        
+#         except Exception as e:
+#             logger.exception(f"❌ Wordpress blog upload failed: {str(e)}")
+
+
+#         # 🔁 Auto-create next task if blog limit not reached
+#         # 🔁 Auto-create next blog task if blog limit not reached
+#         package = onboarding.package
+#         if task.is_active and  task.count_this_month < package.blog_limit:
+#             SEOTask.objects.create(
+#                 user=user,
+#                 service_page=task.service_page,
+#                 task_type='blog_writing',
+#                 next_run=task.last_run + timedelta(days=package.interval),
+#                 # next_run = timezone.now() + timezone.timedelta(minutes=3),
+#                 status='pending',
+#                 count_this_month=task.count_this_month,
+#                 month_year=current_month,
+#                 is_active=True
+#             )
+#             logger.info(f"✅ New blog writing task created (this_month_count={task.count_this_month})")
+#         else:
+            
+#             # ✅ Limit hit: Pause next task, will resume next month
+#             SEOTask.objects.create(
+#                 user=user,
+#                 service_page=task.service_page,
+#                 task_type='blog_writing',
+#                 next_run=None,
+#                 status='pending',
+#                 count_this_month=0,  # new month will reset this
+#                 month_year=current_month,
+#                 is_active=True
+#             )
+#             logger.info(f"⏸️ Blog limit reached. Next task paused until new month.")
+
+#     except Exception as e:
+#         logger.exception(f"❌ Exception in run_blog_writing for task {task.id}: {str(e)}")
+#         task.status = "failed"
+#         task.ai_response_payload = {"error": str(e)}
+#         task.save()
+
+
+
+
 def run_blog_writing(task):
     logger = logging.getLogger(__name__)
     try:
-        service = task.service_page
+        service_page = task.service_page
         user = task.user
 
         onboarding = OnboardingForm.objects.filter(user=user).first()
@@ -296,130 +463,97 @@ def run_blog_writing(task):
             task.save()
             return
 
-        # keywords = Keyword.objects.filter(
-        #     service__onboarding_form=onboarding
-        # ).values_list('keyword', flat=True)
-
-        keywords_objects = Keyword.objects.filter(
-            service__onboarding_form=onboarding
-        )
-
-        keywords = list(keywords_objects.values_list("keyword", flat=True))
-
-        logger.info(f"🔑 Keywords for blog generation: {list(keywords)}")
-
-        if not keywords_objects.exists():
+        services = onboarding.services.all()
+        if not services.exists():
+            logger.warning("⚠ No services found for Blog writing.")
             task.status = "failed"
             task.save()
             return
-        
-        research_words = []
-        for keyword in keywords_objects:
-            keyword_questions = keyword.questions.values_list("question", flat=True)
-            research_words.extend(keyword_questions)
 
-        research_words = list(set(research_words))  # Remove duplicates
-        logger.info(f"🧠 Research words: {research_words[:25]}... (total: {len(research_words)})")
-
-        ai_payload = {
-            "keywords": list(keywords),
-            "research_words": research_words,
-            "type": "blog"
-        }
-        
-
-        response = requests.post(
-            # f"{settings.AI_API_DOMAIN}/generate_blog_and_image",
-            f"{settings.AI_API_DOMAIN}/generate_content",
-            json=ai_payload,
-            timeout=60
-        )
-
-        if response.status_code != 200:
-            logger.error(f"❌ AI response error: {response.text}")
-            task.status = "failed"
-            task.ai_request_payload = ai_payload
-            task.ai_response_payload = {"error": response.text}
-            task.save()
-            return
-        
-        data = response.json()
-
-        blog_html = data.get("content", "").strip()
-
-        
-
-        image_url_raw = data.get("imageUrl", "")
-        image_url = re.sub(r"win\s+dows", "windows", image_url_raw)
-
-        # # Remove ```html markdown wrapper
-        # if blog_html.startswith("```html"):
-        #     blog_html = blog_html.replace("```html", "").replace("```", "").strip()
-        # Remove markdown fences
-        blog_html = re.sub(r"^```html\s*", "", blog_html)
-        blog_html = re.sub(r"```$", "", blog_html.strip())
-        if not blog_html:
-            logger.warning("⚠️ Blog content is empty after cleaning.")
-
-
-        # Extract <title>
-        soup = BeautifulSoup(blog_html, "html.parser")
-        # title = soup.title.string.strip() if soup.title else "Untitled Blog"
-        titles = soup.find_all("title")
-        title = titles[0].text.strip() if titles else "Untitled Blog"
-
-        logger.info("✅ Blog HTML received")
-        logger.info("📝 Blog HTML: %s", blog_html)
-        logger.info(f"🖼️ Image URL: {image_url}")
-        logger.info(f"📝 Blog Title: {title}")
-
-     
-
-        blog = Blog.objects.create(
-            seo_task=task,
-            title=title,
-            content=blog_html
-        )
-
-        if image_url:
-            BlogImage.objects.create(blog=blog, image_url=image_url)
-
-        # 🔁 Monthly count logic
+        # reset monthly count if it's a new month
         current_month = timezone.now().strftime('%Y-%m')
         if task.month_year != current_month:
             task.count_this_month = 0
             task.month_year = current_month
 
-        task.count_this_month += 1
+        all_payloads, all_responses = [], []
 
+        # create a separate blog for each service
+        for service in services:
+            keywords = service.keywords.all()
+            if not keywords.exists():
+                logger.warning(f"⚠ No keywords found for service {service.service_name}")
+                continue
+
+            keyword_list = list(keywords.values_list("keyword", flat=True))
+            topic = service.service_name
+
+            logger.info(f"🔑 Keywords for Blog writing ({service.service_name}): {keyword_list}")
+
+            ai_payload = {"keywords": keyword_list, "topic": topic}
+            all_payloads.append(ai_payload)
+
+            try:
+                response = requests.post(
+                    f"{settings.AI_API_DOMAIN}/generate_blog_and_image",
+                    json=ai_payload,
+                    timeout=60
+                )
+                if response.status_code != 200:
+                    logger.error(f"❌ AI API error for {service.service_name}: {response.text}")
+                    continue
+
+                data = response.json()
+                all_responses.append(data)
+
+                blog_html = data.get("blog", "").strip()
+                blog_html = re.sub(r"^```html\s*", "", blog_html)
+                blog_html = re.sub(r"```$", "", blog_html.strip())
+                if not blog_html:
+                    logger.warning(f"⚠ Empty blog content received for {service.service_name}")
+                    continue
+
+                soup = BeautifulSoup(blog_html, "html.parser")
+                titles = soup.find_all("title")
+                title = data.get("refinedTopic") or (titles[0].text.strip() if titles else "Untitled Blog")
+
+                logger.info(f"✅ Blog created for service {service.service_name}")
+                logger.info(f"📝 Blog Title: {title}")
+                logger.info(f"🖼️ Image URL: {data.get('imageUrl', '')}")
+
+                blog = Blog.objects.create(seo_task=task, title=title, content=blog_html)
+
+                if data.get("imageUrl"):
+                    BlogImage.objects.create(blog=blog, image_url=data["imageUrl"])
+
+                try:
+                    upload_blog_to_wordpress(blog, service_page.wordpress_connection)
+                except Exception as e:
+                    logger.exception(f"❌ Wordpress blog upload failed for {service.service_name}: {str(e)}")
+
+                # ✅ increment per blog
+                task.count_this_month += 1
+
+            except Exception as e:
+                logger.error(f"❌ Error creating Blog for {service.service_name}: {str(e)}")
+                continue
+
+        # bookkeeping
         interval_days = onboarding.package.interval if onboarding.package else 7
-        task.ai_request_payload = ai_payload
-        task.ai_response_payload = data
+        task.ai_request_payload = all_payloads
+        task.ai_response_payload = all_responses
         task.last_run = timezone.now()
         task.next_run = timezone.now() + timedelta(days=interval_days)
-        # task.next_run = timezone.now() + timezone.timedelta(minutes=3)
         task.status = "completed"
         task.save()
 
-
-        logger.info(f"✅ Task {task.id} completed successfully.")
-        try:
-            upload_blog_to_wordpress(blog, task.service_page.wordpress_connection)
-        
-        except Exception as e:
-            logger.exception(f"❌ Wordpress blog upload failed: {str(e)}")
-
-
-        # 🔁 Auto-create next task if blog limit not reached
-        # 🔁 Auto-create next blog task if blog limit not reached
         package = onboarding.package
-        if task.is_active and  task.count_this_month < package.blog_limit:
+        if package and task.is_active and task.count_this_month < package.blog_limit:
             SEOTask.objects.create(
                 user=user,
-                service_page=task.service_page,
+                service_page=service_page,
                 task_type='blog_writing',
                 next_run=task.last_run + timedelta(days=package.interval),
-                # next_run = timezone.now() + timezone.timedelta(minutes=3),
                 status='pending',
                 count_this_month=task.count_this_month,
                 month_year=current_month,
@@ -427,25 +561,24 @@ def run_blog_writing(task):
             )
             logger.info(f"✅ New blog writing task created (this_month_count={task.count_this_month})")
         else:
-            
-            # ✅ Limit hit: Pause next task, will resume next month
             SEOTask.objects.create(
                 user=user,
-                service_page=task.service_page,
+                service_page=service_page,
                 task_type='blog_writing',
                 next_run=None,
                 status='pending',
-                count_this_month=0,  # new month will reset this
+                count_this_month=0,  # will reset next month
                 month_year=current_month,
                 is_active=True
             )
-            logger.info(f"⏸️ Blog limit reached. Next task paused until new month.")
+            logger.info("⏸️ Blog limit reached. Next task paused until new month.")
 
     except Exception as e:
         logger.exception(f"❌ Exception in run_blog_writing for task {task.id}: {str(e)}")
         task.status = "failed"
         task.ai_response_payload = {"error": str(e)}
         task.save()
+
 
 
 def run_seo_optimization(task):
@@ -494,11 +627,11 @@ def run_seo_optimization(task):
             task.save()
             return
 
-        questions = KeywordQuestion.objects.filter(keyword__in=keyword_qs)
-        research_words = list(questions.values_list("question", flat=True))
+        # questions = KeywordQuestion.objects.filter(keyword__in=keyword_qs)
+        # research_words = list(questions.values_list("question", flat=True))
 
         logger.info(f"🔑 Keywords: {keywords}")
-        logger.info(f"📚 Research Words: {research_words[:10]}...")
+        # logger.info(f"📚 Research Words: {research_words[:10]}...")
 
          # 🌍 Get area names from ServiceAreas
         service_areas = onboarding.service_areas.all()
@@ -536,7 +669,7 @@ def run_seo_optimization(task):
         # 🧠 AI Content Generation
         api_payload = {
             "keywords": keywords,
-            "research_words": research_words,
+            # "research_words": research_words,
             "area": area,
             "type": "service_area"
         }
