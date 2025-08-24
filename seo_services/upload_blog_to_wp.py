@@ -186,7 +186,60 @@ def upload_blog_to_wordpress(blog, wp_conn,is_job_blog=False):
 
 
 
-def upload_service_page_to_wordpress(service_page, optimized_html):
+# def upload_service_page_to_wordpress(service_page, optimized_html,service_name=None, area_name=None):
+#     wp_conn = service_page.wordpress_connection
+#     logger = logging.getLogger(__name__)
+
+#     headers = {
+#         'Authorization': f'Basic {wp_conn.access_token}',
+#         'Content-Type': 'application/json',
+#     }
+
+#     # Parse title and content
+#     soup = BeautifulSoup(optimized_html, "html.parser")
+#     title = soup.title.string.strip() if soup.title else "Service Page"
+#     content_body = soup.body if soup.body else optimized_html
+#     content_html = str(content_body) if hasattr(content_body, 'prettify') else content_body
+
+#     slug = slugify(title)
+
+#     page_data = {
+#         "title": title,
+#         "slug": slug,
+#         "content": f"<div>{content_html}</div>",
+#         "status": "publish"
+#     }
+
+#     try:
+#         # Upload or update page (naively assumes new upload)
+#         response = requests.post(
+#             f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/pages",
+#             headers=headers,
+#             json=page_data
+#         )
+
+#         logger.info(f"🔼 WordPress Page Upload Response: ")
+
+#         if response.status_code in [200, 201]:
+#             page_data = response.json()
+#             final_url = page_data.get('link')
+            
+#             # Update the SEOTask with the WordPress URL
+#             service_page.seo_tasks.filter(optimized_content=optimized_html).update(
+#                 wp_page_url=final_url,
+#                 last_metrics_update=timezone.now()
+#             )
+#             logger.info(f"✅ Service page uploaded to: {final_url}")
+#             return final_url
+#         else:
+#             logger.error(f"❌ Failed to upload service page content: {response.text}")
+
+#     except Exception as e:
+#         logger.exception(f"❌ Exception during service page upload: {str(e)}")
+
+
+
+def upload_service_page_to_wordpress(service_page, optimized_html, service_name=None, area_name=None):
     wp_conn = service_page.wordpress_connection
     logger = logging.getLogger(__name__)
 
@@ -197,11 +250,21 @@ def upload_service_page_to_wordpress(service_page, optimized_html):
 
     # Parse title and content
     soup = BeautifulSoup(optimized_html, "html.parser")
-    title = soup.title.string.strip() if soup.title else "Service Page"
+    
+    # Use custom title if service_name and area_name are provided
+    if service_name and area_name:
+        title = f"{service_name} in {area_name}"
+    else:
+        title = soup.title.string.strip() if soup.title else "Service Page"
+    
     content_body = soup.body if soup.body else optimized_html
     content_html = str(content_body) if hasattr(content_body, 'prettify') else content_body
 
-    slug = slugify(title)
+    # Create appropriate slug
+    if service_name and area_name:
+        slug = f"{slugify(service_name)}-in-{slugify(area_name)}"
+    else:
+        slug = slugify(title)
 
     page_data = {
         "title": title,
@@ -211,28 +274,48 @@ def upload_service_page_to_wordpress(service_page, optimized_html):
     }
 
     try:
-        # Upload or update page (naively assumes new upload)
-        response = requests.post(
-            f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/pages",
-            headers=headers,
-            json=page_data
+        # First check if page already exists with this slug
+        check_response = requests.get(
+            f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/pages?slug={slug}",
+            headers=headers
         )
+        
+        if check_response.status_code == 200:
+            existing_pages = check_response.json()
+            if existing_pages:
+                # Page exists, update it
+                page_id = existing_pages[0]['id']
+                response = requests.post(
+                    f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/pages/{page_id}",
+                    headers=headers,
+                    json=page_data
+                )
+            else:
+                # Page doesn't exist, create new
+                response = requests.post(
+                    f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/pages",
+                    headers=headers,
+                    json=page_data
+                )
+        else:
+            # Fallback to creating new page
+            response = requests.post(
+                f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/pages",
+                headers=headers,
+                json=page_data
+            )
 
-        logger.info(f"🔼 WordPress Page Upload Response: ")
+        logger.info(f"🔼 WordPress Page Upload Response: {response.status_code}")
 
         if response.status_code in [200, 201]:
             page_data = response.json()
             final_url = page_data.get('link')
-            
-            # Update the SEOTask with the WordPress URL
-            service_page.seo_tasks.filter(optimized_content=optimized_html).update(
-                wp_page_url=final_url,
-                last_metrics_update=timezone.now()
-            )
-            logger.info(f"✅ Service page uploaded to: {final_url}")
+            logger.info(f"✅ Service page uploaded: {final_url}")
             return final_url
         else:
             logger.error(f"❌ Failed to upload service page content: {response.text}")
+            return None
 
     except Exception as e:
         logger.exception(f"❌ Exception during service page upload: {str(e)}")
+        return None
