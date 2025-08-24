@@ -137,7 +137,7 @@ class SEOTask(models.Model):
         return f"{self.user.email} - {self.get_task_type_display()} - {self.status} - {self.is_active}"
 
 class Blog(models.Model):
-    seo_task = models.OneToOneField(SEOTask, on_delete=models.CASCADE, related_name='blog')
+    seo_task = models.ForeignKey(SEOTask, on_delete=models.CASCADE, related_name='blog')
     title = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True, null=True)
     content = models.TextField()  # This will be the generated_content
