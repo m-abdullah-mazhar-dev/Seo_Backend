@@ -53,11 +53,11 @@ class OnBoardingFormSerializer(serializers.ModelSerializer):
         ]
 
 
-    def validate(self, attrs):
-        email = attrs.get("email")
-        if OnboardingForm.objects.filter(email=email).exists():
-            raise serializers.ValidationError({"email": "This email is already used in another onboarding form."})
-        return attrs
+    # def validate(self, attrs):
+    #     email = attrs.get("email")
+    #     if OnboardingForm.objects.filter(email=email).exists():
+    #         raise serializers.ValidationError({"email": "This email is already used in another onboarding form."})
+    #     return attrs
     
     def create(self, validated_data):
         services_data = validated_data.pop('services')
