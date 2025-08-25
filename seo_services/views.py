@@ -102,7 +102,7 @@ class OnBoardingFormAPIView(APIView):
         return Response({"message": "Onboarding forms retrieved successfully.", "data": serializer.data}, status=status.HTTP_200_OK)
     
     
-    def patch(self, request, pk=None):
+    def put(self, request, pk=None):
         if not pk:
             return Response({"message": "Onboarding form ID is required for update."}, status=status.HTTP_400_BAD_REQUEST)
 
