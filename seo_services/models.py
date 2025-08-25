@@ -168,3 +168,21 @@ class GMBPost(models.Model):
 
     def __str__(self):
         return f"GMB Post for {self.area} - {self.created_at}"
+    
+
+
+# In models.py
+class DataForSEOKeywordData(models.Model):
+    keyword = models.ForeignKey(Keyword, on_delete=models.CASCADE, related_name='dataforseo_data')
+    search_volume = models.PositiveIntegerField(default=0)  # Monthly search volume
+    competition = models.FloatField(null=True, blank=True)  # Competition level (0-1)
+    cpc = models.FloatField(null=True, blank=True)  # Cost per click
+    rank = models.IntegerField(null=True, blank=True)  # Current ranking position
+    url_found = models.URLField(null=True, blank=True)  # Ranking URL from our site
+    last_updated = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('keyword',)  # One entry per keyword
+    
+    def __str__(self):
+        return f"{self.keyword.keyword} - {self.search_volume} searches"
