@@ -44,7 +44,8 @@ class CreateJobOnboardingFormAPIView(APIView):
             #     return Response({"error": f"Failed to publish job: {str(e)}"}, status=500)
 
             try:
-                task = create_initial_job_blog_task(user, job_form)
+                # task = create_initial_job_blog_task(user, job_form)
+                blog_task, template_task = create_initial_job_tasks(user, job_form)
                 print("task created successfully ")
             except Exception as e:
                 return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
@@ -858,3 +859,304 @@ def run_job_blog_writing(task):
         task.status = "failed"
         task.ai_response_payload = {"error": str(e)}
         task.save()
+
+    
+
+
+def map_job_form_to_api_payload(job_form):
+    """Map JobOnboardingForm data to the API request payload structure"""
+    
+    # Determine position type
+    position = "Company Driver"  # Default assumption
+    
+    # Determine pay type
+    if job_form.position_1099 and job_form.position_w2:
+        pay_type = "1099 or W2"
+    elif job_form.position_1099:
+        pay_type = "1099"
+    elif job_form.position_w2:
+        pay_type = "W2"
+    else:
+        pay_type = "Not specified"
+    
+    # Determine pay structure
+    pay_structure = ""
+    if job_form.cpm:
+        pay_structure = f"{job_form.cpm} CPM"
+    elif job_form.driver_percentage:
+        pay_structure = f"{job_form.driver_percentage}% of load"
+    
+    # Determine equipment list
+    equipment = []
+    if job_form.equip_fridge or job_form.main_equip_fridge:
+        equipment.append("FRIDGES")
+    if job_form.equip_microwave or job_form.main_equip_microwave:
+        equipment.append("MICROWAVES")
+    if job_form.equip_inverter or job_form.main_equip_inverter:
+        equipment.append("INVERTERS")
+    if job_form.equip_led or job_form.main_equip_led:
+        equipment.append("LED LIGHTING")
+    if job_form.equip_apu:
+        equipment.append("APU")
+    
+    # Determine transmission type
+    transmission = []
+    if job_form.transmission_automatic or job_form.main_auto_transmission:
+        transmission.append("AUTOMATIC TRUCKS AVAILABLE")
+    if job_form.transmission_manual or job_form.main_manual_transmission:
+        transmission.append("MANUAL TRUCKS AVAILABLE")
+    
+    # Build driver requirements
+    driver_requirements = [
+        "CDL A LICENSE REQUIRED",
+        f"MIN. {job_form.minimum_hiring_age} YEARS OF AGE",
+        job_form.clean_clearinghouse,
+        job_form.clean_drug_test
+    ]
+    
+    # Add experience requirement if specified
+    if job_form.cdl_experience_required != "3":  # Assuming "3" means 3 months (graduates welcome)
+        exp_map = {
+            "3": "3 MONTHS",
+            "6": "6 MONTHS", 
+            "12": "1 YEAR",
+            "18": "1.5 YEARS",
+            "24": "2 YEARS",
+            "36": "3+ YEARS"
+        }
+        driver_requirements.append(f"MIN. {exp_map.get(job_form.cdl_experience_required, 'EXPERIENCE')} EXPERIENCE")
+    else:
+        driver_requirements.append("GRADUATES WELCOME")
+    
+    # Build driver benefits
+    driver_benefits = []
+    if transmission:
+        driver_benefits.extend(transmission)
+    
+    if job_form.truck_governed_speed:
+        driver_benefits.append(f"TRUCKS GOVERNED AT {job_form.truck_governed_speed}")
+    
+    if job_form.truck_make_year:
+        driver_benefits.append(f"FLEET INCLUDES {job_form.truck_make_year}")
+    
+    if job_form.benefit_weekly_deposits or job_form.main_weekly_deposits:
+        driver_benefits.append("WEEKLY DIRECT DEPOSITS")
+    
+    if job_form.benefit_dispatch_support or job_form.main_dispatch_support:
+        driver_benefits.append("24/7 DISPATCH & ROADSIDE ASSISTANCE")
+    
+    if job_form.main_safety_bonus:
+        driver_benefits.append("SAFETY BONUS")
+    
+    if job_form.referral_bonus or job_form.main_referral_bonus:
+        bonus_amount = f" - {job_form.referral_bonus_amount}" if job_form.referral_bonus_amount else ""
+        driver_benefits.append(f"REFERRAL BONUS{bonus_amount}")
+    
+    # Build travel benefits
+    travel = []
+    if job_form.travel_provided and job_form.travel_description:
+        travel.append(job_form.travel_description.upper())
+    
+    # Build extra information
+    extra = []
+    if job_form.escrow_required and job_form.escrow_description:
+        extra.append(job_form.escrow_description.upper())
+    
+    # Parse hiring areas from primary_running_areas
+    hiring_area = {
+        "regions": [],
+        "states": []
+    }
+    
+    if job_form.primary_running_areas:
+        # Simple parsing - this could be enhanced with more sophisticated logic
+        areas = job_form.primary_running_areas.split(',')
+        for area in areas:
+            area = area.strip()
+            if len(area) == 2 and area.isupper():  # Likely a state code
+                hiring_area["states"].append(area)
+            else:  # Likely a region name
+                hiring_area["regions"].append(area)
+    
+    # Construct the API payload
+    payload = {
+        "position": position,
+        "route": "OTR",  # Default assumption, could be enhanced
+        "hauling": job_form.hauling_equipment.upper() if job_form.hauling_equipment else "VAN",
+        "pay_type": pay_type,
+        "pay_structure": pay_structure,
+        "company_name": job_form.company_name,
+        "contact_phone": job_form.contact_phone,
+        "contact_email": job_form.hiring_email,
+        "website": job_form.company_website or "",
+        "terminal_address": job_form.terminal,
+        "mc_number": job_form.mc_dot_number.split('/')[0] if '/' in job_form.mc_dot_number else job_form.mc_dot_number,
+        "dot_number": job_form.mc_dot_number.split('/')[1] if '/' in job_form.mc_dot_number and len(job_form.mc_dot_number.split('/')) > 1 else "",
+        "driver_requirements": [req for req in driver_requirements if req],  # Remove empty strings
+        "home_time": ["HOME TIME VARIES"],  # Default assumption
+        "driver_benefits": driver_benefits,
+        "equipment": equipment,
+        "travel": travel,
+        "extra": extra,
+        "hiring_area": hiring_area
+    }
+    
+    return payload
+
+def run_job_template_generation(task):
+    try:
+        user = task.user
+        
+        # Get job onboarding form
+        job_onboarding = task.job_onboarding
+        if not job_onboarding:
+            # Try to get from user if not directly linked to task
+            try:
+                job_onboarding = user.jobonboardingform
+            except:
+                job_onboarding = None
+        
+        if not job_onboarding:
+            logger.warning("⚠ No job onboarding form found.")
+            task.status = "failed"
+            task.save()
+            return
+
+        # Monthly check - same logic as before
+        current_month = timezone.now().strftime("%Y-%m")
+        onboarding_form = user.onboardingform.last()
+        package = onboarding_form.package
+        if not package:
+            logger.warning("⚠ No package found for user.")
+            task.status = "failed"
+            task.save()
+            return
+
+        package_limit = package.blog_limit  # Using same limit as blogs
+        
+        if task.month_year != current_month:
+            task.count_this_month = 0
+            task.month_year = current_month
+
+        # Check if limit reached
+        if task.count_this_month >= package_limit:
+            logger.warning("🚫 Job template limit reached for this month.")
+            task.status = "skipped"
+            task.save()
+            return
+
+        # Map job form data to API payload
+        api_payload = map_job_form_to_api_payload(job_onboarding)
+        logger.info(f"🔑 Generated API payload: {api_payload}")
+
+        # Call the job template generation API
+        response = requests.post(
+            f"{settings.AI_API_DOMAIN}/generate_job_template",
+            json=api_payload,
+            timeout=60
+        )
+
+        if response.status_code != 200:
+            logger.error(f"❌ Job template API response error: {response.text}")
+            task.status = "failed"
+            task.ai_request_payload = api_payload
+            task.ai_response_payload = {"error": response.text}
+            task.save()
+            return
+        
+        data = response.json()
+        job_template = data.get("jobTemplate", "").strip()
+        
+        if not job_template:
+            logger.warning("⚠ Job template is empty.")
+            task.status = "failed"
+            task.save()
+            return
+
+        logger.info(f"✅ Job Template generated successfully")
+
+        # Save the template (you might want to create a new model for this)
+        # For now, we'll update the task with the response
+        task.ai_request_payload = api_payload
+        task.ai_response_payload = data
+        task.last_run = timezone.now()
+        task.next_run = timezone.now() + timedelta(days=package.interval)
+        task.count_this_month += 1
+        task.status = "completed"
+        task.save()
+
+        logger.info(f"✅ Job Template Task {task.id} completed successfully.")
+
+        # WordPress upload - convert the template to HTML and post
+        if hasattr(user, 'wordpress_connection'):
+            # Convert the template text to HTML
+            html_content = f"<div>{job_template.replace('**', '<strong>').replace('*', '<li>').replace('\n', '<br>')}</div>"
+            upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content)
+
+        # Auto-create next task if limit not reached - same logic as before
+        if task.count_this_month < package_limit:
+            JobTask.objects.create(
+                user=user,
+                job_onboarding=job_onboarding,
+                task_type='job_blog_writing',  # Or create a new task type for templates
+                next_run=task.next_run,
+                status='pending',
+                count_this_month=task.count_this_month,
+                month_year=current_month,
+                is_active=True
+            )
+            logger.info(f"✅ New job template task created")
+        else:
+            JobTask.objects.create(
+                user=user,
+                job_onboarding=job_onboarding,
+                task_type='job_blog_writing',  # Or create a new task type for templates
+                next_run=None,
+                status='pending',
+                count_this_month=0,
+                month_year=current_month,
+                is_active=True
+            )
+            logger.info(f"⏸ Job template limit reached. Next task paused until new month.")
+
+    except Exception as e:
+        logger.exception(f"❌ Exception in run_job_template_generation for task {task.id}: {str(e)}")
+        task.status = "failed"
+        task.ai_response_payload = {"error": str(e)}
+        task.save()
+
+# Update the task creation function to handle template generation
+def create_initial_job_tasks(user, job_onboarding):
+    onboarding_form = user.onboardingform.last()
+    if not onboarding_form or not onboarding_form.package:
+        return None
+    
+    package = onboarding_form.package 
+    current_month = timezone.now().strftime("%Y-%m")
+    
+    # Create blog task
+    blog_task = JobTask.objects.create(
+        user=user,
+        job_onboarding=job_onboarding,
+        task_type='job_blog_writing',
+        next_run=timezone.now(),
+        status='pending',
+        count_this_month=0,
+        month_year=current_month,
+        is_active=True
+    )
+    
+    # Create template task
+    template_task = JobTask.objects.create(
+        user=user,
+        job_onboarding=job_onboarding,
+        task_type='job_template_generation',  # You might need to add this to TASK_TYPES
+        next_run=timezone.now(),
+        status='pending',
+        count_this_month=0,
+        month_year=current_month,
+        is_active=True
+    )
+    
+    logger.info(f"✅ Initial job tasks created for user {user.email}")
+    return blog_task, template_task
