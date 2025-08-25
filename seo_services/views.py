@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 import re
 from .utils import call_dataforseo_keyword_suggestions, create_stripe_product_and_price, extract_keyword_suggestions, find_best_keyword_alternative
 from rest_framework.permissions import IsAdminUser
-
+from rest_framework.decorators import api_view, permission_classes
 
 logger = logging.getLogger(__name__)
 
@@ -1967,6 +1967,41 @@ class MyKeywordsView(APIView):
         serializer = KeywordSerializer(keywords, many=True)
         return Response({"success": True, "message": "Keywords retrieved successfully.", "data": serializer.data})
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_keyword_metrics(request):
+    """
+    Get raw keyword metrics for dashboard
+    """
+    try:
+        keywords = Keyword.objects.filter(
+        service__onboarding_form__user=request.user
+        ).prefetch_related('dataforseo_data')
+        
+        metrics = []
+        for keyword in keywords:
+            data = keyword.dataforseo_data.last()  # since it's a queryset
+            if data:
+                metrics.append({
+                    'keyword': keyword.keyword,
+                    'search_volume': data.search_volume,
+                    'competition': data.competition,
+                    'cpc': data.cpc,
+                    'last_updated': data.last_updated
+                })
+
+        
+        return Response({
+            'metrics': metrics,
+            'total_keywords': len(metrics)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting keyword metrics: {str(e)}")
+        return Response({
+            'error': 'Failed to get keyword metrics'
+        }, status=500)
 
 class MyBlogsView(APIView):
     permission_classes = [IsAuthenticated]
