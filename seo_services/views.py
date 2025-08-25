@@ -1255,6 +1255,179 @@ def run_seo_optimization(task):
 
 
 
+# def run_keyword_optimization(task):
+#     logger = logging.getLogger(__name__)
+#     logger.info("🔍 Running keyword optimization task with DataForSEO...")
+
+#     try:
+#         user = task.user
+#         onboarding = OnboardingForm.objects.filter(user=user).first()
+#         if not onboarding:
+#             logger.warning(f"⚠️ No onboarding form found for user {user.email}")
+#             task.status = "failed"
+#             task.save()
+#             return
+        
+#         # Monthly limit check
+#         current_month = timezone.now().strftime("%Y-%m")
+#         package_limit = onboarding.package.keyword_limit if onboarding.package else 5
+
+#         if task.month_year == current_month and task.count_this_month >= package_limit:
+#             logger.warning(f"🚫 Keyword optimization limit reached for this month.")
+#             task.status = "skipped"
+#             task.next_run = None
+#             task.save()
+
+#             SEOTask.objects.create(
+#                 user=user,
+#                 task_type="keyword_optimization",
+#                 status="pending",
+#                 is_active=True,
+#                 month_year=current_month,
+#                 count_this_month=0,
+#                 next_run=None,
+#             )
+#             logger.info("⏸️ Limit reached, next keyword task paused for this month.")
+#             return
+
+#         services = onboarding.services.all()
+#         if not services:
+#             logger.warning(f"⚠️ No services found for onboarding form {onboarding.id}")
+#             task.status = "failed"
+#             task.save()
+#             return
+
+#         for service in services:
+#             # Get all keyword objects for this service
+#             keyword_objects = service.keywords.all()
+#             if not keyword_objects:
+#                 logger.warning(f"⚠️ No keywords found for service {service.id}")
+#                 continue
+
+#             # Get original keywords
+#             original_keywords = [kw.keyword for kw in keyword_objects]
+            
+#             # Step 1: Get keyword suggestions
+#             logger.info(f"📋 Getting suggestions for {len(original_keywords)} keywords")
+#             suggestions_data = fetch_keyword_suggestions(original_keywords)
+            
+#             if not suggestions_data:
+#                 logger.warning(f"⚠️ No suggestions returned from DataForSEO API for service {service.id}")
+#                 continue
+
+#             # Step 2: Extract all suggested keywords and get their metrics
+#             all_suggested_keywords = []
+#             for original_keyword, suggestions in suggestions_data.items():
+#                 for suggestion in suggestions:
+#                     if suggestion["keyword"] and suggestion["keyword"] not in all_suggested_keywords:
+#                         all_suggested_keywords.append(suggestion["keyword"])
+            
+#             # Also include original keywords to compare
+#             all_keywords_to_check = list(set(original_keywords + all_suggested_keywords))
+            
+#             logger.info(f"📊 Getting metrics for {len(all_keywords_to_check)} keywords")
+#             all_metrics = fetch_keyword_metrics(all_keywords_to_check)
+            
+#             if not all_metrics:
+#                 logger.warning(f"⚠️ No metrics returned from DataForSEO API")
+#                 continue
+
+#             # Step 3: Process each original keyword and find better alternatives
+#             for keyword_obj in keyword_objects:
+#                 original_keyword = keyword_obj.keyword
+#                 original_metrics = all_metrics.get(original_keyword, {})
+                
+#                 # Get suggestions for this specific keyword
+#                 keyword_suggestions = suggestions_data.get(original_keyword, [])
+                
+#                 if not keyword_suggestions:
+#                     logger.info(f"ℹ️ No suggestions found for keyword '{original_keyword}'")
+#                     continue
+                
+#                 # Find the best alternative
+#                 best_alternative = find_best_keyword_alternative(
+#                     keyword_suggestions, 
+#                     original_keyword, 
+#                     all_metrics
+#                 )
+                
+#                 if best_alternative and best_alternative["keyword"] != original_keyword:
+#                     # Check if the alternative is significantly better
+#                     original_score = calculate_keyword_score(original_metrics)
+#                     alternative_score = calculate_keyword_score(best_alternative["metrics"])
+
+#                     # Handle cases where scores might be 0 or None
+#                     if original_score == 0 and alternative_score == 0:
+#                         logger.info(f"✅ Keeping '{original_keyword}' - both original and alternative have score 0")
+#                         continue
+#                     elif original_score == 0:
+#                         improvement_ratio = float('inf')
+#                     else:
+#                         improvement_ratio = alternative_score / original_score
+
+#                         # Only replace if significantly better (e.g., 20% improvement)
+#                     if improvement_ratio >= 1.2:
+#                         logger.info(f"🔄 Replacing '{original_keyword}' with '{best_alternative['keyword']}' "
+#                                 f"(improvement: {improvement_ratio:.2f}x)")
+                        
+#                         keyword_obj.keyword = best_alternative["keyword"]
+#                         keyword_obj.save()
+                        
+#                         # Save DataForSEO metrics for the new keyword
+#                         DataForSEOKeywordData.objects.update_or_create(
+#                             keyword=keyword_obj,
+#                             defaults={
+#                                 "search_volume": best_alternative["metrics"].get("search_volume", 0) or 0,
+#                                 "competition": (best_alternative["metrics"].get("competition", 0) or 0) / 100.0,
+#                                 "cpc": best_alternative["metrics"].get("cpc", 0) or 0,
+#                             }
+#                         )
+#                     else:
+#                         logger.info(f"✅ Keeping '{original_keyword}' - alternative not significantly better "
+#                                    f"(improvement: {improvement_ratio:.2f}x)")
+#                 else:
+#                     logger.info(f"✅ Keeping '{original_keyword}' - no better alternative found")
+
+#         # Mark task complete
+#         task.status = "completed"
+#         task.last_run = timezone.now()
+#         task.next_run = timezone.now() + timedelta(days=onboarding.package.interval if onboarding.package else 7)
+#         task.month_year = current_month
+#         task.count_this_month = (task.count_this_month or 0) + 1
+#         task.save()
+#         logger.info(f"✅ Keyword optimization task {task.id} completed.")
+
+#         # Create next task
+#         if task.count_this_month < package_limit:
+#             SEOTask.objects.create(
+#                 user=user,
+#                 task_type="keyword_optimization",
+#                 next_run=task.next_run,
+#                 status="pending",
+#                 count_this_month=task.count_this_month,
+#                 month_year=current_month,
+#                 is_active=True,
+#             )
+#             logger.info("✅ Created next keyword optimization task.")
+#         else:
+#             SEOTask.objects.create(
+#                 user=user,
+#                 task_type="keyword_optimization",
+#                 next_run=None,
+#                 status="pending",
+#                 count_this_month=0,
+#                 month_year=current_month,
+#                 is_active=True,
+#             )
+#             logger.info("⏸️ Limit reached, next keyword task paused for this month.")
+
+#     except Exception as e:
+#         logger.exception(f"❌ Exception in run_keyword_optimization for task {task.id}: {str(e)}")
+#         task.status = "failed"
+#         task.save()
+
+
+# Task for all metrice of each keyword
 def run_keyword_optimization(task):
     logger = logging.getLogger(__name__)
     logger.info("🔍 Running keyword optimization task with DataForSEO...")
@@ -1313,18 +1486,21 @@ def run_keyword_optimization(task):
             
             if not suggestions_data:
                 logger.warning(f"⚠️ No suggestions returned from DataForSEO API for service {service.id}")
-                continue
-
-            # Step 2: Extract all suggested keywords and get their metrics
-            all_suggested_keywords = []
-            for original_keyword, suggestions in suggestions_data.items():
-                for suggestion in suggestions:
-                    if suggestion["keyword"] and suggestion["keyword"] not in all_suggested_keywords:
-                        all_suggested_keywords.append(suggestion["keyword"])
+                # Even if no suggestions, we can still get metrics for original keywords
+                all_keywords_to_check = original_keywords
+            else:
+                # Extract all suggested keywords
+                all_suggested_keywords = []
+                for original_keyword, suggestions in suggestions_data.items():
+                    if suggestions:
+                        for suggestion in suggestions:
+                            if suggestion.get("keyword") and suggestion.get("keyword") not in all_suggested_keywords:
+                                all_suggested_keywords.append(suggestion.get("keyword"))
+                
+                # Include both original and suggested keywords
+                all_keywords_to_check = list(set(original_keywords + all_suggested_keywords))
             
-            # Also include original keywords to compare
-            all_keywords_to_check = list(set(original_keywords + all_suggested_keywords))
-            
+            # Step 2: Get metrics for ALL keywords
             logger.info(f"📊 Getting metrics for {len(all_keywords_to_check)} keywords")
             all_metrics = fetch_keyword_metrics(all_keywords_to_check)
             
@@ -1332,61 +1508,89 @@ def run_keyword_optimization(task):
                 logger.warning(f"⚠️ No metrics returned from DataForSEO API")
                 continue
 
-            # Step 3: Process each original keyword and find better alternatives
-            for keyword_obj in keyword_objects:
-                original_keyword = keyword_obj.keyword
-                original_metrics = all_metrics.get(original_keyword, {})
-                
-                # Get suggestions for this specific keyword
-                keyword_suggestions = suggestions_data.get(original_keyword, [])
-                
-                if not keyword_suggestions:
-                    logger.info(f"ℹ️ No suggestions found for keyword '{original_keyword}'")
-                    continue
-                
-                # Find the best alternative
-                best_alternative = find_best_keyword_alternative(
-                    keyword_suggestions, 
-                    original_keyword, 
-                    all_metrics
-                )
-                
-                if best_alternative and best_alternative["keyword"] != original_keyword:
-                    # Check if the alternative is significantly better
-                    original_score = calculate_keyword_score(original_metrics)
-                    alternative_score = calculate_keyword_score(best_alternative["metrics"])
+            # Step 3: Store metrics for ALL original keywords (not wasting API calls!)
+            store_keyword_metrics(keyword_objects, all_metrics)
+            logger.info(f"💾 Stored metrics for {len(keyword_objects)} keywords")
 
-                    # Handle cases where scores might be 0 or None
-                    if original_score == 0 and alternative_score == 0:
-                        logger.info(f"✅ Keeping '{original_keyword}' - both original and alternative have score 0")
+            # Step 4: Only now process replacements if we have suggestions
+            if suggestions_data:
+                for keyword_obj in keyword_objects:
+                    original_keyword = keyword_obj.keyword
+                    original_metrics = all_metrics.get(original_keyword, {})
+                    
+                    # Get suggestions for this specific keyword
+                    keyword_suggestions = suggestions_data.get(original_keyword, [])
+                    
+                    if not keyword_suggestions:
+                        logger.info(f"ℹ️ No suggestions found for keyword '{original_keyword}'")
                         continue
-                    elif original_score == 0:
-                        improvement_ratio = float('inf')
-                    else:
-                        improvement_ratio = alternative_score / original_score
-
+                    
+                    # Find the best alternative
+                    best_alternative = find_best_keyword_alternative(
+                        keyword_suggestions, 
+                        original_keyword, 
+                        all_metrics
+                    )
+                    
+                    if best_alternative and best_alternative["keyword"] != original_keyword:
+                        # Check if the alternative is significantly better
+                        original_score = calculate_keyword_score(original_metrics)
+                        alternative_score = calculate_keyword_score(best_alternative["metrics"])
+                        
+                        # Handle cases where scores might be 0 or None
+                        if original_score == 0 and alternative_score == 0:
+                            logger.info(f"✅ Keeping '{original_keyword}' - both scores are 0")
+                            continue
+                        elif original_score == 0:
+                            improvement_ratio = float('inf')
+                        else:
+                            improvement_ratio = alternative_score / original_score
+                        
                         # Only replace if significantly better (e.g., 20% improvement)
-                    if improvement_ratio >= 1.2:
-                        logger.info(f"🔄 Replacing '{original_keyword}' with '{best_alternative['keyword']}' "
-                                f"(improvement: {improvement_ratio:.2f}x)")
-                        
-                        keyword_obj.keyword = best_alternative["keyword"]
-                        keyword_obj.save()
-                        
-                        # Save DataForSEO metrics for the new keyword
-                        DataForSEOKeywordData.objects.update_or_create(
-                            keyword=keyword_obj,
-                            defaults={
-                                "search_volume": best_alternative["metrics"].get("search_volume", 0) or 0,
-                                "competition": (best_alternative["metrics"].get("competition", 0) or 0) / 100.0,
-                                "cpc": best_alternative["metrics"].get("cpc", 0) or 0,
-                            }
-                        )
+                        if improvement_ratio >= 1.2:
+                            logger.info(f"🔄 Replacing '{original_keyword}' with '{best_alternative['keyword']}' "
+                                       f"(improvement: {improvement_ratio:.2f}x)")
+                            
+                            # Store metrics for the NEW keyword before replacing
+                            new_keyword_obj, created = Keyword.objects.get_or_create(
+                                service=service,
+                                keyword=best_alternative["keyword"],
+                                defaults={
+                                    'clicks': 0,
+                                    'impressions': 0,
+                                    'average_position': None,
+                                    'last_updated': timezone.now()
+                                }
+                            )
+                            
+                            if created:
+                                logger.info(f"📝 Created new keyword: '{best_alternative['keyword']}'")
+                            
+                            # Update the DataForSEO data for the new keyword
+                            DataForSEOKeywordData.objects.update_or_create(
+                                keyword=new_keyword_obj,
+                                defaults={
+                                    "search_volume": best_alternative["metrics"].get("search_volume", 0) or 0,
+                                    "competition": (best_alternative["metrics"].get("competition", 0) or 0) / 100.0,
+                                    "competition_index": best_alternative["metrics"].get("competition", 0),
+                                    "competition_level": best_alternative["metrics"].get("competition_level"),
+                                    "cpc": best_alternative["metrics"].get("cpc", 0) or 0,
+                                    "low_bid": best_alternative["metrics"].get("low_bid"),
+                                    "high_bid": best_alternative["metrics"].get("high_bid"),
+                                }
+                            )
+                            
+                            # Now replace the old keyword with the new one
+                            # (You might want to archive the old keyword instead of deleting it)
+                            keyword_obj.delete()  # Or set inactive, depending on your strategy
+                            
+                        else:
+                            logger.info(f"✅ Keeping '{original_keyword}' - alternative not significantly better "
+                                       f"(improvement: {improvement_ratio:.2f}x)")
                     else:
-                        logger.info(f"✅ Keeping '{original_keyword}' - alternative not significantly better "
-                                   f"(improvement: {improvement_ratio:.2f}x)")
-                else:
-                    logger.info(f"✅ Keeping '{original_keyword}' - no better alternative found")
+                        logger.info(f"✅ Keeping '{original_keyword}' - no better alternative found")
+            else:
+                logger.info("ℹ️ No keyword suggestions available, only metrics were stored")
 
         # Mark task complete
         task.status = "completed"
@@ -1426,7 +1630,36 @@ def run_keyword_optimization(task):
         task.status = "failed"
         task.save()
 
+
+
 # In your views.py or tasks.py (same file as run_keyword_optimization)
+
+# utils/dataforseo_utils.py
+def store_keyword_metrics(keyword_objects, all_metrics):
+    """
+    Store metrics for all keywords, not just the replaced ones
+    """
+    for keyword_obj in keyword_objects:
+        keyword_text = keyword_obj.keyword
+        metrics = all_metrics.get(keyword_text, {})
+        
+        if metrics:
+            # Convert competition from 0-100 scale to 0-1 scale
+            competition_index = metrics.get("competition")
+            competition = competition_index / 100.0 if competition_index is not None else None
+            
+            DataForSEOKeywordData.objects.update_or_create(
+                keyword=keyword_obj,
+                defaults={
+                    "search_volume": metrics.get("search_volume", 0) or 0,
+                    "competition": competition,
+                    "competition_index": competition_index,
+                    "competition_level": metrics.get("competition_level"),
+                    "cpc": metrics.get("cpc", 0) or 0,
+                    "low_bid": metrics.get("low_bid"),
+                    "high_bid": metrics.get("high_bid"),
+                }
+            )
 
 def find_best_keyword_alternative(suggestions, original_keyword, all_metrics):
     """
