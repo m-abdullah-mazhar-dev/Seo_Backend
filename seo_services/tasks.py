@@ -25,7 +25,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from job.models import JobTask
-from job.views import run_job_blog_writing
+from job.views import run_job_blog_writing, run_job_template_generation
 from .models import SEOTask, OnboardingForm, Keyword, Blog, BlogImage
 from .views import run_blog_writing, run_gmb_post_creation, run_keyword_optimization, run_seo_optimization  # or move logic here if you prefer
 from datetime import timedelta
@@ -80,6 +80,10 @@ def process_due_job_tasks():
                 run_job_blog_writing(task)
             elif task.task_type == 'job_gmb_post':
                 logger.info("📢 Running job GMB post task...")
+                # Similar implementation for GMB posts
+            elif task.task_type == 'job_template_generation':
+                logger.info("📢 Running job template task...")
+                run_job_template_generation(task)
                 # Similar implementation for GMB posts
         except Exception as e:
             logger.error(f"❌ Failed processing job task ID {task.id}: {str(e)}")

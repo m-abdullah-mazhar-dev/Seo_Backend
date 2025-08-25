@@ -44,8 +44,8 @@ def get_or_create_category(wp_conn, slug, name=None, description=""):
         raise Exception(f"❌ Failed to create '{slug}' category: {response.text}")
 
 
-def upload_job_post_to_wordpress(job_form, job_page, html_content):
-    wp_conn = job_page.wordpress_connection
+def upload_job_post_to_wordpress(job_form, wp_conn, html_content):
+    wp_conn = wp_conn
     title = f"{job_form.company_name} - Hiring CDL Drivers"
 
     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
