@@ -352,3 +352,10 @@ GOOGLE_CLIENT_SECRET = "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"
 # CRM 
 HUBSPOT_CLIENT_ID = os.getenv('HUBSPOT_CLIENT_ID')
 HUBSPOT_CLIENT_SECRET = os.getenv('HUBSPOT_CLIENT_SECRET')
+
+
+DATAFORSEO_LOGIN = os.getenv('DATAFORSEO_LOGIN', '')
+DATAFORSEO_PASSWORD = os.getenv('DATAFORSEO_PASSWORD', '')
+
+# Your target domain for ranking detection
+TARGET_DOMAIN = os.getenv('TARGET_DOMAIN', 'yourdomain.com')
