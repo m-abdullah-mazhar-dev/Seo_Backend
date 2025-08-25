@@ -172,17 +172,20 @@ class GMBPost(models.Model):
 
 
 # In models.py
+# models.py
 class DataForSEOKeywordData(models.Model):
     keyword = models.ForeignKey(Keyword, on_delete=models.CASCADE, related_name='dataforseo_data')
-    search_volume = models.PositiveIntegerField(default=0)  # Monthly search volume
-    competition = models.FloatField(null=True, blank=True)  # Competition level (0-1)
+    search_volume = models.PositiveIntegerField(default=0)
+    competition = models.FloatField(null=True, blank=True)  # 0-1 scale
+    competition_index = models.IntegerField(null=True, blank=True)  # 0-100 scale
+    competition_level = models.CharField(max_length=20, null=True, blank=True)  # LOW, MEDIUM, HIGH
     cpc = models.FloatField(null=True, blank=True)  # Cost per click
-    rank = models.IntegerField(null=True, blank=True)  # Current ranking position
-    url_found = models.URLField(null=True, blank=True)  # Ranking URL from our site
+    low_bid = models.FloatField(null=True, blank=True)
+    high_bid = models.FloatField(null=True, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
     
     class Meta:
-        unique_together = ('keyword',)  # One entry per keyword
+        unique_together = ('keyword',)
     
     def __str__(self):
         return f"{self.keyword.keyword} - {self.search_volume} searches"
