@@ -354,8 +354,8 @@ HUBSPOT_CLIENT_ID = os.getenv('HUBSPOT_CLIENT_ID')
 HUBSPOT_CLIENT_SECRET = os.getenv('HUBSPOT_CLIENT_SECRET')
 
 
-DATAFORSEO_LOGIN = os.getenv('DATAFORSEO_LOGIN', '')
-DATAFORSEO_PASSWORD = os.getenv('DATAFORSEO_PASSWORD', '')
+DATAFORSEO_EMAIL = os.getenv('DATAFORSEO_EMAIL', '')
+DATAFORSEO_KEY = os.getenv('DATAFORSEO_KEY', '')
 
 # Your target domain for ranking detection
-TARGET_DOMAIN = os.getenv('TARGET_DOMAIN', 'yourdomain.com')
+TARGET_DOMAIN = os.getenv('TARGET_DOMAIN', 'https://galaxywholesales.com')

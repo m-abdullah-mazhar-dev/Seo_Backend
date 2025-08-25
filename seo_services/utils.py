@@ -38,52 +38,103 @@ def create_stripe_product_and_price(package, amount_cents, currency="usd", inter
 
 logger = logging.getLogger(__name__)
 
+# def call_dataforseo_keyword_suggestions(keywords):
+#     """
+#     Call DataForSEO API to get keyword suggestions and metrics
+#     Returns: Dictionary with original keyword as key and suggestions as value
+#     """
+#     if not settings.DATAFORSEO_EMAIL or not settings.DATAFORSEO_KEY:
+#         logger.error("DataForSEO credentials not configured")
+#         return None
+    
+#     try:
+#         # Prepare multiple requests - one for each keyword
+#         tasks = []
+#         for keyword in keywords:
+#             tasks.append({
+#                 "keywords": [keyword],
+#                 "location_name": "United States",
+#                 "language_name": "English",
+#                 "include_serp_info": True,
+#                 "depth": 10  # Get more suggestions
+#             })
+        
+#         # Make the API call
+#         response = requests.post(
+#             "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords/live",
+#             auth=(settings.DATAFORSEO_EMAIL, settings.DATAFORSEO_KEY),
+#             json=tasks,
+#             timeout=30
+#         )
+        
+#         if response.status_code == 200:
+#             data = response.json()
+#             results = {}
+            
+#             for task in data.get("tasks", []):
+#                 if task.get("status_code") == 20000:  # Success
+#                     keyword = task.get("data", {}).get("keywords", [""])[0]
+#                     results[keyword] = task.get("result", [])
+            
+#             return results
+#         else:
+#             logger.error(f"DataForSEO API HTTP error: {response.status_code}")
+#             return None
+            
+#     except Exception as e:
+#         logger.exception(f"Error calling DataForSEO API: {str(e)}")
+#         return None
+
+
 def call_dataforseo_keyword_suggestions(keywords):
     """
-    Call DataForSEO API to get keyword suggestions and metrics
-    Returns: Dictionary with original keyword as key and suggestions as value
+    Call DataForSEO API to get keyword suggestions and metrics (volume, CPC, competition).
     """
-    if not settings.DATAFORSEO_LOGIN or not settings.DATAFORSEO_PASSWORD:
+    if not settings.DATAFORSEO_EMAIL or not settings.DATAFORSEO_KEY:
         logger.error("DataForSEO credentials not configured")
         return None
-    
+
     try:
-        # Prepare multiple requests - one for each keyword
-        tasks = []
-        for keyword in keywords:
-            tasks.append({
-                "keywords": [keyword],
-                "location_name": "United States",
-                "language_name": "English",
-                "include_serp_info": True,
-                "depth": 10  # Get more suggestions
-            })
-        
-        # Make the API call
+        # Prepare payload
+        tasks = [{
+            "keywords": keywords,  # send multiple keywords in one task
+            "location_code": 2840,  # United States
+            "language_code": "en"
+        }]
+
+        # API call (keywords_for_keywords gives volume, CPC, competition)
         response = requests.post(
-            "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords/live",
-            auth=(settings.DATAFORSEO_LOGIN, settings.DATAFORSEO_PASSWORD),
+            "https://api.dataforseo.com/v3/keywords_data/google/keywords_for_keywords/live",
+            auth=(settings.DATAFORSEO_EMAIL, settings.DATAFORSEO_KEY),
             json=tasks,
             timeout=30
         )
-        
+
         if response.status_code == 200:
             data = response.json()
             results = {}
-            
+
             for task in data.get("tasks", []):
                 if task.get("status_code") == 20000:  # Success
-                    keyword = task.get("data", {}).get("keywords", [""])[0]
-                    results[keyword] = task.get("result", [])
-            
+                    for result in task.get("result", []):
+                        for item in result.get("items", []):
+                            kw = item.get("keyword")
+                            results.setdefault(kw, []).append({
+                                "keyword": kw,
+                                "search_volume": item.get("search_volume", 0),
+                                "competition": item.get("competition"),
+                                "cpc": item.get("cpc"),
+                            })
             return results
+
         else:
-            logger.error(f"DataForSEO API HTTP error: {response.status_code}")
+            logger.error(f"DataForSEO API HTTP error: {response.status_code} - {response.text}")
             return None
-            
+
     except Exception as e:
         logger.exception(f"Error calling DataForSEO API: {str(e)}")
         return None
+
 
 def extract_keyword_suggestions(keyword_data):
     """
