@@ -149,29 +149,86 @@ def generate_wordpress_token(username, application_password):
     return token
 
 
+# class ConnectWordPressAPI(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request):
+#         site_url = request.data.get('site_url')
+#         username = request.data.get('username', '').strip()
+#         app_password = request.data.get('app_password', '').strip()
+
+#         if not all([site_url, username, app_password]):
+#             return Response({"error": "Missing required fields."}, status=400)
+
+#         # 🔹 Generate and store the access token (base64 encoded)
+#         access_token = generate_wordpress_token(username, app_password)
+
+#         wp_conn, created = WordPressConnection.objects.update_or_create(
+#             user=request.user,
+#             defaults={
+#                 'site_url': site_url,
+#                 'access_token': access_token  # ✅ Now we only need the token
+#             }
+#         )
+
+#         return Response({"message": "WordPress connected successfully."})
+
+
 class ConnectWordPressAPI(APIView):
+    """
+    Try to connect to WordPress.
+    Only create DB entry if verified successfully.
+    If already exists for the user → return error.
+    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        site_url = request.data.get('site_url')
+        site_url = request.data.get('site_url', '').strip()
         username = request.data.get('username', '').strip()
         app_password = request.data.get('app_password', '').strip()
 
         if not all([site_url, username, app_password]):
             return Response({"error": "Missing required fields."}, status=400)
 
-        # 🔹 Generate and store the access token (base64 encoded)
+        # 🔹 Check if connection already exists for this user
+        if hasattr(request.user, "wordpress_connection"):
+            return Response(
+                {"error": "WordPress connection already exists for this user."},
+                status=400
+            )
+
+        # 🔹 Generate token
         access_token = generate_wordpress_token(username, app_password)
 
-        wp_conn, created = WordPressConnection.objects.update_or_create(
-            user=request.user,
-            defaults={
-                'site_url': site_url,
-                'access_token': access_token  # ✅ Now we only need the token
-            }
-        )
+        # 🔹 Verify first before saving
+        url = f"{site_url.rstrip('/')}/wp-json/wp/v2/users/me"
+        headers = {'Authorization': f'Basic {access_token.strip()}'}
 
-        return Response({"message": "WordPress connected successfully."})
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                # ✅ Save only if valid (create new)
+                wp_conn = WordPressConnection.objects.create(
+                    user=request.user,
+                    site_url=site_url,
+                    access_token=access_token,
+                )
+                return Response({
+                    "message": "WordPress connection established successfully.",
+                    "created": True
+                }, status=200)
+
+            return Response({
+                "error": "Invalid WordPress credentials.",
+                "status_code": response.status_code,
+            }, status=400)
+
+        except RequestException as e:
+            return Response({
+                "error": "Connection failed.",
+                "details": str(e)
+            }, status=500)
 
 
 
