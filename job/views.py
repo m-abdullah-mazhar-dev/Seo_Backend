@@ -28,8 +28,14 @@ class CreateJobOnboardingFormAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, format=None):
-        serializer = JobOnboardingFormSerializer(data=request.data)
         user = request.user
+
+        if JobOnboardingForm.objects.filter(user=user).exists():
+            return Response({
+                "message": "Job onboarding form already exists for this user."
+            }, status=status.HTTP_200_OK)
+        
+        serializer = JobOnboardingFormSerializer(data=request.data)
         if serializer.is_valid():
             job_form = serializer.save(user = user)
 
@@ -43,12 +49,12 @@ class CreateJobOnboardingFormAPIView(APIView):
             # except Exception as e:
             #     return Response({"error": f"Failed to publish job: {str(e)}"}, status=500)
 
-            try:
-                # task = create_initial_job_blog_task(user, job_form)
-                blog_task, template_task = create_initial_job_tasks(user, job_form)
-                print("task created successfully ")
-            except Exception as e:
-                return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
+            # try:
+            #     # task = create_initial_job_blog_task(user, job_form)
+            #     # blog_task, template_task = create_initial_job_tasks(user, job_form)
+            #     print("task created successfully ")
+            # except Exception as e:
+            #     return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
             
 
 
