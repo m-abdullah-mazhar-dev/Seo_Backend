@@ -332,6 +332,28 @@ class OAuthInitAPIView(APIView):
             from urllib.parse import urlencode
             return f"https://app.hubspot.com/oauth/authorize?{urlencode(params)}"
         
+        elif crm_type.provider == 'zoho':
+
+            # Correct Zoho CRM scopes - space separated, not comma separated
+            scopes = [
+                'ZohoCRM.modules.ALL',
+                'ZohoCRM.settings.ALL',
+                'aaaserver.profile.READ'
+            ]
+            scope_string = ' '.join(scopes)
+            params = {
+                'client_id': settings.ZOHO_CLIENT_ID,
+                'response_type': 'code',
+                'redirect_uri': redirect_uri,
+                'scope': scope_string,
+                'state': state,
+                'access_type': 'offline',
+                'prompt': 'consent'
+            }
+            
+            from urllib.parse import urlencode
+            return f"https://accounts.zoho.com/oauth/v2/auth?{urlencode(params)}"
+        
         # Add other CRM providers here
         return None
 
@@ -344,6 +366,7 @@ class OAuthCallbackAPIView(APIView):
         if serializer.is_valid():
             code = serializer.validated_data['code']
             state = serializer.validated_data['state']
+            location = request.GET.get('location', '')  
             
             # Verify state parameter
             if state != request.session.get('oauth_state'):
@@ -364,7 +387,7 @@ class OAuthCallbackAPIView(APIView):
             crm_type = get_object_or_404(CRMType, id=crm_type_id)
             
             # Exchange code for access token
-            token_data = self.exchange_code_for_token(crm_type, code, redirect_uri)
+            token_data = self.exchange_code_for_token(crm_type, code, redirect_uri,location)
             
             if token_data:
                 # Create or update CRM connection
@@ -403,7 +426,7 @@ class OAuthCallbackAPIView(APIView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    def exchange_code_for_token(self, crm_type, code, redirect_uri):
+    def exchange_code_for_token(self, crm_type, code, redirect_uri,location=''):
         if crm_type.provider == 'hubspot':
             url = "https://api.hubapi.com/oauth/v1/token"
             
@@ -421,8 +444,68 @@ class OAuthCallbackAPIView(APIView):
                     return response.json()
             except requests.RequestException:
                 pass
+        elif crm_type.provider == 'zoho':
+            # Use .com domain (most common)
+            token_url = "https://accounts.zoho.com/oauth/v2/token"
+            
+            data = {
+                'grant_type': 'authorization_code',
+                'client_id': settings.ZOHO_CLIENT_ID,
+                'client_secret': settings.ZOHO_CLIENT_SECRET,
+                'redirect_uri': redirect_uri,
+                'code': code
+            }
+            
+            try:
+                response = requests.post(token_url, data=data)
+                print(f"Zoho token exchange response: {response.status_code}")
+                print(f"Zoho token exchange response text: {response.text}")
+                
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    # Log the detailed error
+                    print(f"Zoho token exchange failed: {response.text}")
+                    
+            except requests.RequestException as e:
+                print(f"Zoho token exchange error: {str(e)}")
+
+                    
         
         return None
+    
+class DebugZohoTokenView(APIView):
+    """Debug view to check Zoho token scopes"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        # Check what scopes the token has by calling a simple API
+        url = "https://www.zohoapis.com/crm/v2/org"
+        
+        headers = {
+            "Authorization": f"Zoho-oauthtoken {connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return Response({
+                    "status": "success", 
+                    "scopes": "Token has basic access",
+                    "response": response.json()
+                })
+            else:
+                return Response({
+                    "status": "error",
+                    "code": response.status_code,
+                    "message": response.text,
+                    "token": connection.oauth_access_token[:50] + "..." if connection.oauth_access_token else None
+                })
+        except Exception as e:
+            return Response({"error": str(e)})
 
 class CRMConnectionDetailAPIView(APIView):
     """Get, update, or delete a specific CRM connection"""
@@ -566,6 +649,27 @@ class FeedbackAPI(APIView):
         
         return Response(response_data, status=status.HTTP_200_OK)
 
+# class CRMJobCreateAPIView(APIView):
+#     """Create a job in the connected CRM"""
+#     permission_classes = [IsAuthenticated]
+    
+#     def post(self, request, connection_id):
+#         connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+#         if not connection.is_connected:
+#             return Response(
+#                 {"error": "CRM connection is not active"}, 
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         crm_service = get_crm_service(connection)
+#         result = crm_service.create_job(request.data)
+        
+#         if result['success']:
+#             return Response(result, status=status.HTTP_201_CREATED)
+#         else:
+#             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
 class CRMJobCreateAPIView(APIView):
     """Create a job in the connected CRM"""
     permission_classes = [IsAuthenticated]
@@ -575,7 +679,7 @@ class CRMJobCreateAPIView(APIView):
         
         if not connection.is_connected:
             return Response(
-                {"error": "CRM connection is not active"}, 
+                {"error": "CRM connection is not active. Please reconnect."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -585,6 +689,12 @@ class CRMJobCreateAPIView(APIView):
         if result['success']:
             return Response(result, status=status.HTTP_201_CREATED)
         else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
 class CRMJobCloseAPIView(APIView):

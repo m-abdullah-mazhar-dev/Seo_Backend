@@ -168,5 +168,348 @@ def get_crm_service(connection):
         return HubSpotService(connection)
     elif connection.crm_type.provider == 'pipedrive':
         return PipedriveService(connection)
+    elif connection.crm_type.provider == 'zoho':
+        return ZohoCRMService(connection)
     else:
         raise ValueError(f"Unsupported CRM provider: {connection.crm_type.provider}")
+    
+# class ZohoCRMService(CRMServiceBase):
+#     """Zoho CRM service implementation"""
+    
+#     def __init__(self, connection):
+#         super().__init__(connection)
+#         self.api_domain = self.get_api_domain()
+    
+#     def get_api_domain(self):
+#         """Extract API domain for Zoho - defaults to .com"""
+#         return "com"  # Default to .com domain
+    
+#     def get_api_base_url(self):
+#         """Get the correct API base URL for Zoho"""
+#         return f"https://www.zohoapis.{self.api_domain}"
+    
+#     def verify_connection(self):
+#         """Verify Zoho CRM connection using OAuth token"""
+#         url = f"{self.get_api_base_url()}/crm/v2/org"
+        
+#         headers = {
+#             "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         try:
+#             response = requests.get(url, headers=headers)
+#             if response.status_code == 200:
+#                 return True
+            
+#             # If token is expired, try to refresh it
+#             if response.status_code == 401:
+#                 return self.refresh_token()
+                
+#             return False
+#         except requests.RequestException as e:
+#             print(f"Zoho connection verification error: {str(e)}")
+#             return False
+    
+#     def refresh_token(self):
+#         """Refresh Zoho access token using refresh token"""
+#         if not self.connection.oauth_refresh_token:
+#             return False
+        
+#         # Try different Zoho domains for token refresh
+#         domains = ['com', 'eu', 'in', 'au']  # Common Zoho domains
+        
+#         for domain in domains:
+#             url = f"https://accounts.zoho.{domain}/oauth/v2/token"
+            
+#             data = {
+#                 'grant_type': 'refresh_token',
+#                 'client_id': settings.ZOHO_CLIENT_ID,
+#                 'client_secret': settings.ZOHO_CLIENT_SECRET,
+#                 'refresh_token': self.connection.oauth_refresh_token
+#             }
+            
+#             try:
+#                 response = requests.post(url, data=data)
+#                 if response.status_code == 200:
+#                     token_data = response.json()
+#                     self.connection.oauth_access_token = token_data['access_token']
+#                     self.connection.oauth_token_expiry = timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+#                     self.connection.save()
+#                     return True
+#             except requests.RequestException:
+#                 continue
+        
+#         return False
+    
+#     def ensure_valid_token(self):
+#         """Ensure we have a valid access token, refresh if needed"""
+#         if self.connection.is_token_expired():
+#             return self.refresh_token()
+#         return True
+    
+#     def create_job(self, job_data):
+#         """Create a deal in Zoho CRM"""
+#         if not self.ensure_valid_token():
+#             return {"success": False, "error": "Failed to refresh access token"}
+        
+#         url = f"{self.get_api_base_url()}/crm/v2/Deals"
+        
+#         headers = {
+#             "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         # Format date for Zoho
+#         close_date = job_data.get("close_date", "")
+#         if close_date:
+#             close_date = close_date.split('T')[0]  # Remove time portion if present
+        
+#         deal_data = {
+#             "Deal_Name": job_data.get("job_name", "New Job"),
+#             "Stage": "Qualification",  # Initial stage
+#             "Amount": job_data.get("amount", ""),
+#             "Closing_Date": close_date,
+#         }
+        
+#         data = {
+#             "data": [deal_data]
+#         }
+        
+#         try:
+#             response = requests.post(url, headers=headers, json=data)
+#             if response.status_code == 201:
+#                 result = response.json()
+#                 deal_id = result['data'][0]['details']['id']
+#                 return {"success": True, "job_id": deal_id, "data": result}
+#             else:
+#                 error_msg = self.handle_zoho_error(response)
+#                 return {"success": False, "error": error_msg}
+#         except requests.RequestException as e:
+#             return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+#     def close_job(self, job_id, won=True):
+#         """Close a deal in Zoho CRM (mark as won or lost)"""
+#         if not self.ensure_valid_token():
+#             return {"success": False, "error": "Failed to refresh access token"}
+        
+#         url = f"{self.get_api_base_url()}/crm/v2/Deals/{job_id}"
+        
+#         headers = {
+#             "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         # Determine the stage based on won/lost
+#         stage = "Closed Won" if won else "Closed Lost"
+        
+#         data = {
+#             "data": [{
+#                 "Stage": stage
+#             }]
+#         }
+        
+#         try:
+#             response = requests.put(url, headers=headers, json=data)
+#             if response.status_code == 200:
+#                 return {"success": True, "data": response.json()}
+#             else:
+#                 error_msg = self.handle_zoho_error(response)
+#                 return {"success": False, "error": error_msg}
+#         except requests.RequestException as e:
+#             return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+#     def handle_zoho_error(self, response):
+#         """Handle Zoho API errors consistently"""
+#         try:
+#             error_data = response.json()
+#             if 'data' in error_data and isinstance(error_data['data'], list):
+#                 error_msg = error_data['data'][0].get('message', 'Unknown error')
+#                 error_code = error_data['data'][0].get('code', 'UNKNOWN')
+        #         return f"Zoho Error {error_code}: {error_msg}"
+        #     else:
+        #         return f"Zoho Error: {response.text}"
+        # except:
+        #     return f"Zoho Error: HTTP {response.status_code}"
+
+
+
+class ZohoCRMService(CRMServiceBase):
+    """Zoho CRM service implementation"""
+    
+    def __init__(self, connection):
+        super().__init__(connection)
+        self.api_domain = "com"  # From the successful response
+    
+    def get_api_base_url(self):
+        """Get the correct API base URL for Zoho"""
+        return "https://www.zohoapis.com"
+    
+    def verify_connection(self):
+        """Verify Zoho CRM connection using OAuth token"""
+        url = f"{self.get_api_base_url()}/crm/v2/org"
+        
+        headers = {
+            "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return True
+            
+            # If token is expired, try to refresh it
+            if response.status_code == 401:
+                return self.refresh_token()
+                
+            return False
+        except requests.RequestException as e:
+            print(f"Zoho connection verification error: {str(e)}")
+            return False
+    
+    def refresh_token_with_scopes(self):
+        """Refresh token and request additional scopes if needed"""
+        if not self.connection.oauth_refresh_token:
+            return False
+        
+        token_url = "https://accounts.zoho.com/oauth/v2/token"
+        
+        data = {
+            'grant_type': 'refresh_token',
+            'client_id': settings.ZOHO_CLIENT_ID,
+            'client_secret': settings.ZOHO_CLIENT_SECRET,
+            'refresh_token': self.connection.oauth_refresh_token
+        }
+        
+        try:
+            response = requests.post(token_url, data=data)
+            if response.status_code == 200:
+                token_data = response.json()
+                self.connection.oauth_access_token = token_data['access_token']
+                self.connection.oauth_token_expiry = timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+                self.connection.save()
+                return True
+            else:
+                # If refresh fails due to scope issues, we need to re-authenticate
+                print(f"Token refresh failed: {response.text}")
+                return False
+        except requests.RequestException as e:
+            print(f"Zoho token refresh error: {str(e)}")
+            return False
+    
+    def ensure_valid_token(self):
+        """Ensure we have a valid access token with proper scopes"""
+        if self.connection.is_token_expired():
+            success = self.refresh_token_with_scopes()
+            if not success:
+                # If refresh fails, the token might have insufficient scopes
+                # We should mark the connection as needing re-authentication
+                self.connection.is_connected = False
+                self.connection.save()
+                return False
+        return True
+    
+    def create_job(self, job_data):
+        """Create a deal in Zoho CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token. Please re-authenticate with Zoho."}
+        
+        # Check if connection is still valid
+        if not self.connection.is_connected:
+            return {"success": False, "error": "CRM connection needs re-authentication. Please reconnect Zoho CRM."}
+        
+        url = f"{self.get_api_base_url()}/crm/v2/Deals"
+        
+        headers = {
+            "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Format date for Zoho (YYYY-MM-DD)
+        close_date = job_data.get("close_date", "")
+        if close_date:
+            if 'T' in close_date:
+                close_date = close_date.split('T')[0]  # Remove time portion
+        
+        deal_data = {
+            "Deal_Name": job_data.get("job_name", "New Job"),
+            "Stage": "Qualification",  # Initial stage
+            "Amount": job_data.get("amount", ""),
+            "Closing_Date": close_date,
+        }
+        
+        # Remove empty fields
+        deal_data = {k: v for k, v in deal_data.items() if v is not None and v != ""}
+        
+        data = {
+            "data": [deal_data]
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            print(f"Zoho create deal response: {response.status_code}")
+            print(f"Zoho create deal response text: {response.text}")
+            
+            if response.status_code == 201:
+                result = response.json()
+                deal_id = result['data'][0]['details']['id']
+                return {"success": True, "job_id": deal_id, "data": result}
+            else:
+                # Handle scope mismatch specifically
+                if response.status_code == 401 and "OAUTH_SCOPE_MISMATCH" in response.text:
+                    self.connection.is_connected = False
+                    self.connection.save()
+                    return {"success": False, "error": "Insufficient permissions. Please re-authenticate with Zoho CRM."}
+                
+                error_msg = self.handle_zoho_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def close_job(self, job_id, won=True):
+        """Close a deal in Zoho CRM (mark as won or lost)"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Failed to refresh access token"}
+        
+        url = f"{self.get_api_base_url()}/crm/v2/Deals/{job_id}"
+        
+        headers = {
+            "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Determine the stage based on won/lost
+        stage = "Closed Won" if won else "Closed Lost"
+        
+        data = {
+            "data": [{
+                "Stage": stage
+            }]
+        }
+        
+        try:
+            response = requests.put(url, headers=headers, json=data)
+            print(f"Zoho close deal response: {response.status_code}")
+            print(f"Zoho close deal response text: {response.text}")
+            
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                error_msg = self.handle_zoho_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def handle_zoho_error(self, response):
+        """Handle Zoho API errors consistently"""
+        try:
+            error_data = response.json()
+            if 'data' in error_data and isinstance(error_data['data'], list):
+                error_msg = error_data['data'][0].get('message', 'Unknown error')
+                error_code = error_data['data'][0].get('code', 'UNKNOWN')
+                return f"Zoho Error {error_code}: {error_msg}"
+            else:
+                return f"Zoho Error: {response.text}"
+        except:
+            return f"Zoho Error: HTTP {response.status_code}"
