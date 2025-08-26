@@ -7,7 +7,7 @@ class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError('The Email field must be set')
-        email = self.normalize_email(email)
+        email = self.normalize_email(email).lower()
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save()
@@ -50,4 +50,9 @@ class User(AbstractBaseUser,PermissionsMixin):
 
     def __str__(self):
         return self.first_name + " " + self.last_name
+    
+    def save(self, *args, **kwargs):
+        if self.email:
+            self.email = self.email.lower()
+        super().save(*args, **kwargs)
  
