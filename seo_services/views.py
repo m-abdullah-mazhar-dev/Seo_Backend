@@ -189,6 +189,12 @@ class ConnectWordPressAPI(APIView):
 
         if not all([site_url, username, app_password]):
             return Response({"error": "Missing required fields."}, status=400)
+        
+        if not hasattr(request.user, "usersubscription") or request.user.usersubscription.status != "active":
+            return Response(
+                {"error": "User Dosen't have subscription"},
+                status=400
+            )
 
         # 🔹 Check if connection already exists for this user
         if hasattr(request.user, "wordpress_connection"):
