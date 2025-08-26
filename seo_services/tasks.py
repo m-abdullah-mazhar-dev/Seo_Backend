@@ -30,6 +30,8 @@ from .models import SEOTask, OnboardingForm, Keyword, Blog, BlogImage
 from .views import run_blog_writing, run_gmb_post_creation, run_keyword_optimization, run_seo_optimization  # or move logic here if you prefer
 from datetime import timedelta
 from django.conf import settings
+from django.db.models import Case, When, Value, IntegerField
+
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,19 @@ logger = logging.getLogger(__name__)
 def process_due_seo_tasks():
     logger.info(f"🔄SEO tasks started.")
     now = timezone.now()
-    tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
+    # tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
+
+    tasks = SEOTask.objects.filter(
+        next_run__lte=now, status='pending', is_active=True
+    ).order_by(
+        # keyword_optimization first, then others
+        Case(
+            When(task_type='keyword_optimization', then=Value(0)),
+            default=Value(1),
+            output_field=IntegerField()
+        ),
+        "next_run"  # then sort by next_run within same group
+    )
     # tasks = SEOTask.objects.filter(status='pending')
     logger.info(f"🔄 Found {tasks.count()} due SEO tasks to process.")
 
