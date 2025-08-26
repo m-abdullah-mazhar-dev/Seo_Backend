@@ -19,6 +19,8 @@ urlpatterns = [
     path('crm/connections/<int:pk>/',  CRMConnectionDetailAPIView.as_view(), name='crm-connection-detail'),
     path('crm/connections/<int:connection_id>/jobs/',  CRMJobCreateAPIView.as_view(), name='crm-job-create'),
     path('crm/connections/<int:connection_id>/jobs/<str:job_id>/close/',  CRMJobCloseAPIView.as_view(), name='crm-job-close'),
+
+    path('debug/zoho-token/<int:connection_id>/', DebugZohoTokenView.as_view(), name='debug-zoho-token'),
     
     # Webhook and feedback endpoints
     path('webhook/job-closed/<uuid:secret_token>/',  CRMWebhookAPIView.as_view(), name='crm-webhook'),
