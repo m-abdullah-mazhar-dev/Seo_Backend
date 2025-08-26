@@ -214,8 +214,51 @@ class ConnectWordPressAPI(APIView):
                     site_url=site_url,
                     access_token=access_token,
                 )
+
+
+                # ✅ Create Service Page (directly using site_url as page_url)
+                service_page = ServicePage.objects.create(
+                    user=request.user,
+                    wordpress_connection=wp_conn,
+                    page_url=site_url,   # <-- use site_url directly
+                    blog_required=True   # by default blog is required when connecting
+                )
+
+                # ✅ Get interval from user's package
+                onboarding_form = OnboardingForm.objects.filter(user=request.user).first()
+                if not onboarding_form or not onboarding_form.package:
+                    return Response({"error": "User package not found."}, status=400)
+
+                interval_days = onboarding_form.package.interval
+                next_run = timezone.now()
+                # next_run = timezone.now() + timedelta(days=interval_days)
+
+                # ✅ Create SEO Optimization Task
+                SEOTask.objects.create(
+                    user=request.user,
+                    service_page=service_page,
+                    task_type="seo_optimization",
+                    next_run=next_run
+                )
+
+                # ✅ Create Blog Writing Task
+                SEOTask.objects.create(
+                    user=request.user,
+                    service_page=service_page,
+                    task_type="blog_writing",
+                    next_run=next_run
+                )
+
+                # ✅ Create Keyword Optimization Task
+                SEOTask.objects.create(
+                    user=request.user,
+                    service_page=service_page,
+                    task_type="keyword_optimization",
+                    next_run=next_run
+                )
+
                 return Response({
-                    "message": "WordPress connection established successfully.",
+                    "message": "WordPress connected & Service Page + Tasks created successfully.",
                     "created": True
                 }, status=200)
 
