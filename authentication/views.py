@@ -27,6 +27,16 @@ class RegisterApi(APIView):
         data = request.data
         serializers = UserSerializer(data = data)
         if serializers.is_valid():
+            email = serializers.validated_data.get("email").lower()
+
+            # ✅ Check if user exists
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            if User.objects.filter(email=email).exists():
+                return Response(
+                    {"errors": {"email": ["User with this email already exists"]}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             user = serializers.save()
             token = get_tokens_for_user(user)
             return Response({"token":token, "msg":"registration success"}, status=status.HTTP_201_CREATED)
@@ -37,7 +47,7 @@ class UserLoginApi(APIView):
     def post(self,request):
         serializer = UserLoginSerializer(data = request.data)
         if serializer.is_valid(raise_exception=True):
-            email = serializer.validated_data.get('email')
+            email = serializer.validated_data.get('email').lower()
             password = serializer.validated_data.get('password')
 
             user = authenticate(email=email, password=password)

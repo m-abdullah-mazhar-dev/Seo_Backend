@@ -22,6 +22,11 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ["first_name" ,"last_name","email", "phone_number","password", "password2"]
 
     def validate(self, attrs):
+
+        # Lowercase the email
+        if "email" in attrs and attrs["email"]:
+            attrs["email"] = attrs["email"].lower()
+
         password = attrs.get("password")
         password2 = attrs.get('password2')
 
