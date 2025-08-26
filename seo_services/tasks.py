@@ -42,7 +42,8 @@ def process_due_seo_tasks():
     # tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
 
     tasks = SEOTask.objects.filter(
-        next_run__lte=now, status='pending', is_active=True
+        next_run__lte=now, status='pending', is_active=True,
+         user__usersubscription__status='active'
     ).order_by(
         # keyword_optimization first, then others
         Case(
