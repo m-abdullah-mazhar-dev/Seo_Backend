@@ -2244,3 +2244,73 @@ class AdminClientListAPIView(APIView):
         users = User.objects.filter(user_type='user')
         serializer = AdminClientDetailSerializer(users, many=True)
         return Response(serializer.data)
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+from .models import OnboardingForm, WordPressConnection, Package
+# if you have JobOnboardingForm model, import it here
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+from .models import OnboardingForm, WordPressConnection, Package
+# if you have JobOnboardingForm model, import it here
+
+
+class UserSetupStatusAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # Check WordPress connection
+        wp_connected = WordPressConnection.objects.filter(user=user).exists()
+
+        # Check onboarding form
+        onboarding_form = OnboardingForm.objects.filter(user=user).first()
+        onboarding_submitted = onboarding_form is not None
+
+        # Check jobboarding (assuming JobOnboardingForm exists)
+        try:
+            from job.models import JobOnboardingForm
+            jobboarding_submitted = JobOnboardingForm.objects.filter(user=user).exists()
+        except ImportError:
+            jobboarding_submitted = False  # If no JobOnboardingForm model
+
+        # Check package subscribed
+        package = onboarding_form.package if onboarding_form else None
+        package_subscribed = package is not None
+
+        data = {
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                # "username": user.username,
+                "full_name": getattr(user, "full_name", None),  # if exists
+            },
+            "status": {
+                "wordpress_connected": wp_connected,
+                "onboarding_submitted": onboarding_submitted,
+                "jobboarding_submitted": jobboarding_submitted,
+                "package_subscribed": package_subscribed,
+            },
+        }
+
+        # Add package details if subscribed
+        if package:
+            data["package"] = {
+                "name": package.name,
+                "interval_days": package.interval,
+                "blog_limit": package.blog_limit,
+                "keyword_limit": package.keyword_limit,
+                "seo_optimization_limit": package.seo_optimization_limit,
+                "price": str(package.price),
+            }
+        else:
+            data["package"] = None
+
+        return Response(data)
