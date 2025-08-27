@@ -2266,6 +2266,7 @@ class UserSetupStatusAPI(APIView):
 
     def get(self, request):
         user = request.user
+        print(user.email)
 
         # Check WordPress connection
         wp_connected = WordPressConnection.objects.filter(user=user).exists()
@@ -2280,10 +2281,20 @@ class UserSetupStatusAPI(APIView):
             jobboarding_submitted = JobOnboardingForm.objects.filter(user=user).exists()
         except ImportError:
             jobboarding_submitted = False  # If no JobOnboardingForm model
-
         # Check package subscribed
-        package = onboarding_form.package if onboarding_form else None
-        package_subscribed = package is not None
+                # Default values
+        package = None
+        package_subscribed = False
+
+        user_subscription = getattr(user, "usersubscription", None)
+
+        if user_subscription:
+            print("DEBUG subscription status:", repr(user_subscription.status))  # <-- helps check exact value
+
+            if str(user_subscription.status).strip().lower() == "active":
+                if user_subscription.package:
+                    package = user_subscription.package
+                    package_subscribed = True
 
         data = {
             "user": {
