@@ -55,3 +55,54 @@ class ClientFeedbackSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClientFeedback
         fields = '__all__'
+    
+
+
+
+
+
+
+class JobBlogImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JobBlogImage
+        fields = ['image_url', 'uploaded_at']
+
+class JobBlogSerializer(serializers.ModelSerializer):
+    images = JobBlogImageSerializer(many=True, read_only=True)
+    category = serializers.CharField(source="job_task.task_type", read_only=True)
+    posted_on = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = JobBlog
+        fields = ['id', 'title', 'content', 'category', 'posted_on', 'wp_post_id', 'images']
+
+class JobTaskSerializer(serializers.ModelSerializer):
+    job_title = serializers.SerializerMethodField()
+    job_description = serializers.SerializerMethodField()
+    posted_on = serializers.DateTimeField(source="created_at", read_only=True)
+    total_applicants = serializers.SerializerMethodField()  # You'll need to implement this
+
+    class Meta:
+        model = JobTask
+        fields = ['id', 'job_title', 'job_description', 'posted_on', 'total_applicants', 'status']
+
+    def get_job_title(self, obj):
+        # Extract job title from the AI response payload
+        if obj.ai_response_payload and 'jobTemplate' in obj.ai_response_payload:
+            # You might want to parse the template to extract a proper title
+            return f"{obj.job_onboarding.company_name} - Driver Position"
+        return "Job Position"
+
+    def get_job_description(self, obj):
+        # Return the first part of the job template as description
+        if obj.ai_response_payload and 'jobTemplate' in obj.ai_response_payload:
+            template = obj.ai_response_payload['jobTemplate']
+            # Return first 200 characters as description
+            # return template[:200] + "..." if len(template) > 200 else template
+            return template
+        return ""
+
+    def get_total_applicants(self, obj):
+        # You'll need to implement applicant tracking
+        # For now, return 0 or mock data
+        return 0

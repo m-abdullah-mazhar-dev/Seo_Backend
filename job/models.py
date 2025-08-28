@@ -143,6 +143,7 @@ def default_month_year():
 class JobTask(models.Model):
     TASK_TYPES = (
         ('job_blog_writing', 'Job Blog Writing'),
+        ('job_template_generation', 'Job Posting Task'),
         ('job_gmb_post', 'Job GMB Post'),
     )
     

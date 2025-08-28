@@ -6,7 +6,7 @@ from job.models import *
 from job.utility import create_initial_job_blog_task, generate_structured_job_html, upload_job_post_to_wordpress
 from seo_services.models import WordPressConnection
 from seo_services.upload_blog_to_wp import upload_blog_to_wordpress
-from .serializers import JobOnboardingFormSerializer
+from .serializers import JobBlogSerializer, JobOnboardingFormSerializer, JobTaskSerializer
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import AllowAny
@@ -49,12 +49,12 @@ class CreateJobOnboardingFormAPIView(APIView):
             # except Exception as e:
             #     return Response({"error": f"Failed to publish job: {str(e)}"}, status=500)
 
-            # try:
-            #     # task = create_initial_job_blog_task(user, job_form)
-            #     # blog_task, template_task = create_initial_job_tasks(user, job_form)
-            #     print("task created successfully ")
-            # except Exception as e:
-            #     return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
+            try:
+                # task = create_initial_job_blog_task(user, job_form)
+                blog_task, template_task = create_initial_job_tasks(user, job_form)
+                print("task created successfully ")
+            except Exception as e:
+                return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
             
 
 
@@ -1214,7 +1214,7 @@ def run_job_template_generation(task):
             JobTask.objects.create(
                 user=user,
                 job_onboarding=job_onboarding,
-                task_type='job_blog_writing',  # Or create a new task type for templates
+                task_type='job_template_generation',  # Or create a new task type for templates
                 next_run=task.next_run,
                 status='pending',
                 count_this_month=task.count_this_month,
@@ -1226,7 +1226,7 @@ def run_job_template_generation(task):
             JobTask.objects.create(
                 user=user,
                 job_onboarding=job_onboarding,
-                task_type='job_blog_writing',  # Or create a new task type for templates
+                task_type='job_template_generation',  # Or create a new task type for templates
                 next_run=None,
                 status='pending',
                 count_this_month=0,
@@ -1276,3 +1276,35 @@ def create_initial_job_tasks(user, job_onboarding):
     
     logger.info(f"✅ Initial job tasks created for user {user.email}")
     return blog_task, template_task
+
+
+# -------------------
+
+class MyJobPostsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Get job tasks that represent job posts
+        job_tasks = JobTask.objects.filter(
+            user=request.user, 
+            task_type='job_template_generation'  # or whatever task type represents job posts
+        ).order_by('-created_at')
+        
+        serializer = JobTaskSerializer(job_tasks, many=True)
+        return Response({
+            "success": True, 
+            "message": "Job posts retrieved successfully.", 
+            "data": serializer.data
+        })
+
+class MyJobBlogsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        job_blogs = JobBlog.objects.filter(job_task__user=request.user)
+        serializer = JobBlogSerializer(job_blogs, many=True)
+        return Response({
+            "success": True, 
+            "message": "Job blogs retrieved successfully.", 
+            "data": serializer.data
+        })
