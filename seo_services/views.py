@@ -2112,8 +2112,18 @@ def get_keyword_metrics(request):
 class MyBlogsView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        blogs = Blog.objects.filter(seo_task__user=request.user)
+    def get(self, request,pk = None):
+        user = request.user
+        if pk:
+            blog = get_object_or_404(Blog, id=pk, seo_task__user=user)
+            serializer = BlogSerializer(blog)
+            return Response({
+                "success": True,
+                "message": "Blog retrieved successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        blogs = Blog.objects.filter(seo_task__user=user)
         serializer = BlogSerializer(blogs, many=True)
         return Response({"success": True, "message": "Blogs retrieved successfully.", "data": serializer.data})
     
