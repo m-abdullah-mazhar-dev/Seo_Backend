@@ -279,6 +279,71 @@ class ConnectWordPressAPI(APIView):
                 "details": str(e)
             }, status=500)
 
+class ConnectWordPressAPIJob(APIView):
+    """
+    Try to connect to WordPress.
+    Only create DB entry if verified successfully.
+    If already exists for the user → return error.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        site_url = request.data.get('site_url', '').strip()
+        username = request.data.get('username', '').strip()
+        app_password = request.data.get('app_password', '').strip()
+
+        if not all([site_url, username, app_password]):
+            return Response({"error": "Missing required fields."}, status=400)
+        
+        if not hasattr(request.user, "usersubscription") or request.user.usersubscription.status != "active":
+            return Response(
+                {"error": "User Dosen't have subscription"},
+                status=400
+            )
+
+        # 🔹 Check if connection already exists for this user
+        if hasattr(request.user, "wordpress_connection"):
+            return Response(
+                {"error": "WordPress connection already exists for this user."},
+                status=400
+            )
+
+        # 🔹 Generate token
+        access_token = generate_wordpress_token(username, app_password)
+
+        # 🔹 Verify first before saving
+        url = f"{site_url.rstrip('/')}/wp-json/wp/v2/users/me"
+        headers = {'Authorization': f'Basic {access_token.strip()}'}
+
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                # ✅ Save only if valid (create new)
+                wp_conn = WordPressConnection.objects.create(
+                    user=request.user,
+                    site_url=site_url,
+                    access_token=access_token,
+                )
+
+
+                
+
+                return Response({
+                    "message": "WordPress connected For job",
+                    "created": True
+                }, status=200)
+
+            return Response({
+                "error": "Invalid WordPress credentials.",
+                "status_code": response.status_code,
+            }, status=400)
+
+        except RequestException as e:
+            return Response({
+                "error": "Connection failed.",
+                "details": str(e)
+            }, status=500)
 
 
 class VerifyWordPressConnectionAPI(APIView):
