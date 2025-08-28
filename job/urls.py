@@ -26,4 +26,8 @@ urlpatterns = [
     path('webhook/job-closed/<uuid:secret_token>/',  CRMWebhookAPIView.as_view(), name='crm-webhook'),
     path('feedback/<uuid:token>/<str:answer>/',  FeedbackAPI.as_view(), name='api-feedback'),
 
+    # JObs get api 
+    path('my-job-posts/', MyJobPostsView.as_view(), name='my-job-posts'),
+    path('my-job-blogs/', MyJobBlogsView.as_view(), name='my-job-blogs'),
+
 ]
