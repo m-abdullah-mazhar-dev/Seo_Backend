@@ -170,17 +170,23 @@ def upload_blog_to_wordpress(blog, wp_conn,is_job_blog=False):
 
     if response.status_code in [200, 201]:
         wp_post_id = response.json().get("id")
+        wp_post_url = response.json().get("link")  
+        wp_status = response.json().get("status")
         # blog.wp_post_id = wp_post_id
         # blog.save()
 
         # Save WordPress ID to appropriate blog model
         if is_job_blog:
             blog.wp_post_id = wp_post_id
+            blog.wp_post_url = wp_post_url
+            blog.wp_status = wp_status
             blog.save()
         else:
             blog.wp_post_id = wp_post_id
+            blog.wp_post_url = wp_post_url
+            blog.wp_status = wp_status
             blog.save()
-        logger.info(f"✅ Blog uploaded to WordPress successfully. wp_id: {wp_post_id}")
+        logger.info(f"✅ Blog uploaded to WordPress successfully. wp_id: {wp_post_id}. {wp_post_url}, {wp_status}")
     else:
         logger.error(f"❌ Failed to upload blog: {response.text}")
 
