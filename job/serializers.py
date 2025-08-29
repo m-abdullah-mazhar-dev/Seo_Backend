@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 from .models import *
+from django.utils.html import strip_tags
 
 class JobOnboardingFormSerializer(serializers.ModelSerializer):
     class Meta:
@@ -71,10 +72,17 @@ class JobBlogSerializer(serializers.ModelSerializer):
     images = JobBlogImageSerializer(many=True, read_only=True)
     category = serializers.CharField(source="job_task.task_type", read_only=True)
     posted_on = serializers.DateTimeField(source="created_at", read_only=True)
+    description = serializers.SerializerMethodField()
 
     class Meta:
         model = JobBlog
-        fields = ['id', 'title', 'content', 'category', 'posted_on', 'wp_post_id', 'images']
+        fields = ['id', 'title', 'content', 'category', 'posted_on', 'wp_post_id','wp_post_url','wp_status', 'description' , 'images']
+    
+    
+    def get_description(self, obj):
+        plain_text = strip_tags(obj.content)  # remove <p>, <h1>, etc.
+        return plain_text[:200] + "..." if plain_text else None
+
 
 class JobTaskSerializer(serializers.ModelSerializer):
     job_title = serializers.SerializerMethodField()

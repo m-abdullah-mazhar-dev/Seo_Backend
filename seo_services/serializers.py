@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from payment.models import UserSubscription
 from .models import *
+from django.utils.html import strip_tags
 
 
 class PackageSerializer(serializers.ModelSerializer):
@@ -234,15 +235,19 @@ class KeywordSerializer(serializers.ModelSerializer):
 class BlogSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     category = serializers.CharField(source="seo_task.task_type", read_only=True)
+    description = serializers.SerializerMethodField()
 
     class Meta:
         model = Blog
-        fields = ['id','wp_post_id','title', 'content', 'category', 'image']
+        fields = ['id','wp_post_id' ,'wp_post_url','wp_status','title', 'content',  'description' ,'category', 'image']
 
     def get_image(self, obj):
         image = obj.images.first()
         return image.image_url if image else None
 
+    def get_description(self, obj):
+        plain_text = strip_tags(obj.content)  # remove <p>, <h1>, etc.
+        return plain_text[:200] + "..." if plain_text else None
 
 
 class BlogEditSerializer(serializers.ModelSerializer):

@@ -143,6 +143,20 @@ class Blog(models.Model):
     content = models.TextField()  # This will be the generated_content
     category = models.CharField(max_length=100, null=True, blank=True)  # Optional
     wp_post_id = models.IntegerField(null=True, blank=True) 
+    wp_post_url = models.URLField(max_length=500, null=True, blank=True)
+
+    wp_status = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        choices=[
+            ("draft", "Draft"),
+            ("publish", "Published"),
+            ("pending", "Pending Review"),
+            ("future", "Scheduled"),
+            ("private", "Private"),
+        ]
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

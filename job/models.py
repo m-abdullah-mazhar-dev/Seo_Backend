@@ -178,6 +178,20 @@ class JobBlog(models.Model):
     title = models.CharField(max_length=255)
     content = models.TextField()
     wp_post_id = models.CharField(max_length=100, null=True, blank=True)
+    wp_post_url = models.URLField(max_length=500, null=True, blank=True)
+
+    wp_status = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        choices=[
+            ("draft", "Draft"),
+            ("publish", "Published"),
+            ("pending", "Pending Review"),
+            ("future", "Scheduled"),
+            ("private", "Private"),
+        ]
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
 
