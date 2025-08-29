@@ -2066,7 +2066,8 @@ class StopAutomation(APIView):
         task_type_map = {
             "keywords": "keyword_optimization",
             "blog": "blog_writing",
-            "seo": "seo_optimization"
+            "seo": "seo_optimization",
+            "gmb_post" : "gmb_post"
         }
 
         task_type = task_type_map.get(action)
@@ -2094,7 +2095,8 @@ class StartAutomation(APIView):
         valid_actions = {
             "blog": "blog_writing",
             "seo": "seo_optimization",
-            "keywords": "keyword_optimization"
+            "keywords": "keyword_optimization",
+            "gmb_post" : "gmb_post"
         }
 
         task_type = valid_actions.get(action)
