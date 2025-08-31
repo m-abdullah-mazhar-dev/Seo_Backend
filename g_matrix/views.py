@@ -424,7 +424,7 @@ def analytics_oauth2callback(request):
 #         }, status=response.status_code)
 
 #     return Response(response.json())
-@api_view(['GET'])
+# @api_view(['GET'])
 # @permission_classes([IsAuthenticated])
 # def fetch_analytics_data(request):
 #     try:
@@ -600,7 +600,7 @@ def analytics_oauth2callback(request):
 #     })
 
 
-
+@api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def fetch_analytics_data(request):
     try:
