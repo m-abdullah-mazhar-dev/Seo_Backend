@@ -2158,6 +2158,9 @@ def get_keyword_metrics(request):
             if data:
                 metrics.append({
                     'keyword': keyword.keyword,
+                    'clicks': keyword.clicks,
+                    'impressions': keyword.impressions,
+                    'ctr': keyword.ctr,
                     'search_volume': data.search_volume,
                     'competition': data.competition,
                     'cpc': data.cpc,
