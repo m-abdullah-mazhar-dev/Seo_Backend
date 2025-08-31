@@ -2,6 +2,7 @@
 
 from django.urls import path
 from g_matrix.views import *
+from django.views.generic import TemplateView
 
 urlpatterns = [
     path('auth/start/', SearchAuthStartView.as_view(), name='search_console_auth_start'),
@@ -17,4 +18,6 @@ urlpatterns = [
     path('profile/auth/start/', AuthStartView.as_view(), name='gbp_auth_start'),
     path('profile/auth/callback/', AuthCallbackView.as_view(), name='gbp_auth_callback'),
     path('profile/accounts/', ListBusinessesView.as_view(), name='gbp_accounts'),
+
+    path("test-ga-callback/", TemplateView.as_view(template_name="g_metrix/test_ga_callback.html"))
 ]
