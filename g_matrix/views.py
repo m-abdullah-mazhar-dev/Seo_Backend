@@ -36,9 +36,13 @@ class SearchAuthStartView(APIView):
 
 class SearchAuthCallbackView(APIView):
     permission_classes = [IsAuthenticated]
-    def get(self, request):
+    def post(self, request):
+        code = request.data.get("code") or request.query_params.get("code")
+        if not code:
+            return Response({"error": "Missing code"}, status=400)
         flow = get_flow_search()
-        flow.fetch_token(authorization_response=request.build_absolute_uri())
+        # flow.fetch_token(authorization_response=request.build_absolute_uri())
+        flow.fetch_token(code=code)
         creds = flow.credentials
 
         # Call Search Console API to get the verified site
