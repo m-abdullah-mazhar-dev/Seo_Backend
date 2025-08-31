@@ -201,10 +201,9 @@ from googleapiclient.discovery import build
 from google.auth.exceptions import RefreshError
 from django.conf import settings
 
-@api_view(["GET"])
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def analytics_oauth2callback(request):
-
 
     accounts = []
     property_id = None
@@ -214,7 +213,7 @@ def analytics_oauth2callback(request):
     print("\n=== STARTING OAUTH2 CALLBACK ===")
     print(f"Incoming request params: {request.GET}")
     
-    code = request.GET.get("code")
+    code = request.data.get("code")
     if not code:
         print("ERROR: Missing authorization code")
         return JsonResponse({"error": "Missing authorization code"}, status=400)
@@ -659,3 +658,6 @@ class ListBusinessesView(APIView):
         service = build('mybusinessaccountmanagement', 'v1', credentials=creds)
         accounts = service.accounts().list().execute()
         return Response(accounts)
+
+
+

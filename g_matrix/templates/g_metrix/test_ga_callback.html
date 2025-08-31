@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Google Analytics OAuth Test</title>
+</head>
+<body>
+  <h2>Testing Google Analytics OAuth Flow</h2>
+  <p id="status">Waiting for code...</p>
+
+  <script>
+    const statusEl = document.getElementById("status");
+
+    // 1. Debug log full query string
+    console.log("Full query string:", window.location.search);
+
+    // 2. Extract ?code= from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    let code = urlParams.get("code");
+
+    // 3. Google sometimes returns codes like "4/0AV..." → must decode
+    if (code) {
+      code = decodeURIComponent(code);
+    }
+
+    console.log("Extracted code:", code);
+
+    if (!code) {
+      statusEl.innerText = "No code found in URL!";
+    } else {
+      statusEl.innerText = "Found code, sending to backend...";
+
+      // 4. Send POST request to backend with Authorization header
+      fetch("/google_analytics/analytics/oauth2callback/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzU2NjcxOTg0LCJpYXQiOjE3NTY2NjgzODQsImp0aSI6IjhkMGE4MzQ5NDljNzQxZGE4NjIwNzc0NWY3NWQ1YzcwIiwidXNlcl9pZCI6NX0.fl21JWXdmOmMgm3YYlp-5QvE_dgeIL8_Gaj4razOQfI"
+        },
+        body: JSON.stringify({ code })
+      })
+      .then(res => res.json())
+      .then(data => {
+        console.log("Backend response:", data);
+        statusEl.innerText = "Backend response: " + JSON.stringify(data);
+      })
+      .catch(err => {
+        console.error("Error:", err);
+        statusEl.innerText = "Error: " + err;
+      });
+    }
+  </script>
+</body>
+</html>
