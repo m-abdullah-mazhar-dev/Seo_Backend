@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Search Console Auth</title>
+</head>
+<body>
+    <h2>Connecting Google Search Console...</h2>
+    <p>Please wait, we are completing the authentication.</p>
+
+    <script>
+        // Extract query params from Google redirect (code & state)
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get("code");
+        const state = params.get("state");
+
+        if (!code) {
+            document.body.innerHTML = "<p style='color:red;'>❌ No authorization code found.</p>";
+        } else {
+            // Call your backend API with the code
+            fetch("/search-console/oauth2callback/?code=" + code + "&state=" + state, {
+                method: "post",
+                headers: {
+                    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzU2NjcxOTg0LCJpYXQiOjE3NTY2NjgzODQsImp0aSI6IjhkMGE4MzQ5NDljNzQxZGE4NjIwNzc0NWY3NWQ1YzcwIiwidXNlcl9pZCI6NX0.fl21JWXdmOmMgm3YYlp-5QvE_dgeIL8_Gaj4razOQfI", // or session cookie if using DRF JWT
+                    "Content-Type": "application/json"
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.message) {
+                    document.body.innerHTML = "<p style='color:green;'>✅ " + data.message + "</p>";
+                } else {
+                    document.body.innerHTML = "<p style='color:red;'>❌ " + (data.error || "Something went wrong") + "</p>";
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                document.body.innerHTML = "<p style='color:red;'>⚠️ Error connecting to backend.</p>";
+            });
+        }
+    </script>
+</body>
+</html>

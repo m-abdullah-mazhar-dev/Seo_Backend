@@ -19,5 +19,6 @@ urlpatterns = [
     path('profile/auth/callback/', AuthCallbackView.as_view(), name='gbp_auth_callback'),
     path('profile/accounts/', ListBusinessesView.as_view(), name='gbp_accounts'),
 
-    path("test-ga-callback/", TemplateView.as_view(template_name="g_metrix/test_ga_callback.html"))
+    path("test-ga-callback/", TemplateView.as_view(template_name="g_metrix/test_ga_callback.html")),
+    path("test-search-callback/", TemplateView.as_view(template_name="g_metrix/test_search_callback.html")),
 ]
