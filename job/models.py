@@ -133,6 +133,8 @@ class JobOnboardingForm(models.Model):
     route = models.CharField(max_length=50, null= True, blank= True)
     position = models.CharField(max_length=50, null= True, blank=True)
 
+    home_time = models.JSONField(default=list, blank=True)
+
     def __str__(self):
         return self.company_name
     
