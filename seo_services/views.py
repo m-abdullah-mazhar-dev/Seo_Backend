@@ -2228,7 +2228,7 @@ class MyBlogsView(APIView):
 
         blogs = Blog.objects.filter(seo_task__user=user)
         serializer = BlogSerializer(blogs, many=True)
-        return Response({"success": True, "message": "Blogs retrieved successfully.", "data": serializer.data})
+        return Response({"success": True, "message": "Blogs retrieved successfully.", "data": serializer.data,"count": blogs.count(), })
     
 
 # views.py
@@ -2374,6 +2374,48 @@ from .models import OnboardingForm, WordPressConnection, Package
 # if you have JobOnboardingForm model, import it here
 
 
+from django.utils import timezone
+from g_matrix.models import SearchConsoleToken, GoogleAnalyticsToken, GoogleBusinessToken
+
+
+def is_valid_google_analytics(user):
+    token = GoogleAnalyticsToken.objects.filter(user=user).first()
+    if not token:
+        return False
+
+    # Check if token expired
+    if token.token_expiry and token.token_expiry <= timezone.now():
+        # 👇 Here you could attempt a refresh with the refresh_token
+        # If refresh fails, return False
+        return False
+    return True
+
+
+def is_valid_search_console(user):
+    
+    token = SearchConsoleToken.objects.filter(user=user).first()
+    if not token:
+        return False
+
+    # If you store expiry inside credentials JSON
+    expiry = token.credentials.get("expiry") if token.credentials else None
+    if expiry and timezone.now() >= timezone.datetime.fromisoformat(expiry):
+        return False
+    return True
+
+
+def is_valid_business_profile(user):
+    token = GoogleBusinessToken.objects.filter(user=user).first()
+    if not token:
+        return False
+
+    expiry = token.credentials.get("expiry") if token.credentials else None
+    if expiry and timezone.now() >= timezone.datetime.fromisoformat(expiry):
+        return False
+    return True
+
+
+
 class UserSetupStatusAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -2409,6 +2451,13 @@ class UserSetupStatusAPI(APIView):
                     package = user_subscription.package
                     package_subscribed = True
 
+
+        # ✅ Token validity checks
+        search_console_connected = is_valid_search_console(user)
+        analytics_connected = is_valid_google_analytics(user)
+        business_connected = is_valid_business_profile(user)
+
+
         data = {
             "user": {
                 "id": user.id,
@@ -2421,6 +2470,9 @@ class UserSetupStatusAPI(APIView):
                 "onboarding_submitted": onboarding_submitted,
                 "jobboarding_submitted": jobboarding_submitted,
                 "package_subscribed": package_subscribed,
+                "search_console_connected": search_console_connected,
+                "analytics_connected": analytics_connected,
+                "business_profile_connected": business_connected,
             },
         }
 
