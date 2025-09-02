@@ -1309,3 +1309,20 @@ class MyJobBlogsView(APIView):
             "blog_count": job_blogs.count(),
             "data": serializer.data
         })
+    
+
+class JobPostCountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Count job tasks (job posts) for the logged-in user
+        total_job_posts = JobTask.objects.filter(
+            # user=request.user,
+            task_type='job_template_generation'  # same task type as your listing
+        ).count()
+
+        return Response({
+            "success": True,
+            "message": "Total job posts retrieved successfully.",
+            "total_job_posts": total_job_posts
+        })
