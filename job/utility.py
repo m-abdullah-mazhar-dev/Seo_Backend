@@ -44,9 +44,32 @@ def get_or_create_category(wp_conn, slug, name=None, description=""):
         raise Exception(f"❌ Failed to create '{slug}' category: {response.text}")
 
 
-def upload_job_post_to_wordpress(job_form, wp_conn, html_content):
+def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload ):
     wp_conn = wp_conn
-    title = f"{job_form.company_name} - Hiring CDL Drivers"
+
+        # Prefer AI request payload if available (more reliable than free-text AI response)
+    if api_payload:
+        route = api_payload.get("route", "OTR")
+        position = api_payload.get("position", "Driver")
+        equipment = api_payload.get("hauling", "General Freight")
+        pay_structure = api_payload.get("pay_structure", "Pay Not Specified")
+        pay_value = api_payload.get("pay_type", "N/A")
+    else:
+        # Fallback to job_form if payload missing
+        route = "OTR"
+        position = "Company Driver"
+        equipment = job_form.hauling_equipment or "General Freight"
+        if job_form.cpm:
+            pay_structure = f"{job_form.cpm} CPM"
+            pay_value = f"${job_form.cpm}/mile"
+        elif job_form.driver_percentage:
+            pay_structure = f"{job_form.driver_percentage}% of load"
+            pay_value = f"{job_form.driver_percentage}%"
+        else:
+            pay_structure = "Pay Not Specified"
+            pay_value = "N/A"
+    # title = f"{job_form.company_name} - Hiring CDL Drivers"
+    title = f"{route} {position} – {equipment} – {pay_structure} – {pay_value}"
 
     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
 

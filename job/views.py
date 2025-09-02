@@ -983,7 +983,9 @@ def map_job_form_to_api_payload(job_form):
     """Map JobOnboardingForm data to the API request payload structure"""
     
     # Determine position type
-    position = "Company Driver"  # Default assumption
+    # position = "Company Driver"  # Default assumption
+    position = job_form.position
+    route = job_form.route
     
     # Determine pay type
     if job_form.position_1099 and job_form.position_w2:
@@ -1026,8 +1028,8 @@ def map_job_form_to_api_payload(job_form):
     driver_requirements = [
         "CDL A LICENSE REQUIRED",
         f"MIN. {job_form.minimum_hiring_age} YEARS OF AGE",
-        job_form.clean_clearinghouse,
-        job_form.clean_drug_test
+        "Clean Clearinghouse" if job_form.clean_clearinghouse else None,
+        "Clean Drug Test" if job_form.clean_drug_test else None
     ]
     
     # Add experience requirement if specified
@@ -1097,7 +1099,7 @@ def map_job_form_to_api_payload(job_form):
     # Construct the API payload
     payload = {
         "position": position,
-        "route": "OTR",  # Default assumption, could be enhanced
+        "route": route,  # Default assumption, could be enhanced
         "hauling": job_form.hauling_equipment.upper() if job_form.hauling_equipment else "VAN",
         "pay_type": pay_type,
         "pay_structure": pay_structure,
@@ -1208,7 +1210,7 @@ def run_job_template_generation(task):
         if hasattr(user, 'wordpress_connection'):
             # Convert the template text to HTML
             html_content = f"<div>{job_template.replace('**', '<strong>').replace('*', '<li>').replace('\n', '<br>')}</div>"
-            upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content)
+            upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content,api_payload=api_payload)
 
         # Auto-create next task if limit not reached - same logic as before
         if task.count_this_month < package_limit:

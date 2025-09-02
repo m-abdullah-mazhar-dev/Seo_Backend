@@ -97,8 +97,10 @@ class JobOnboardingForm(models.Model):
     hiring_age_custom = models.CharField(max_length=100, blank=True, null=True)
 
     disqualify_sap_dui_dwi = models.BooleanField(default=False)
-    clean_clearinghouse = models.CharField(max_length=255)
-    clean_drug_test = models.CharField(max_length=255)
+    # clean_clearinghouse = models.CharField(max_length=255)
+    # clean_drug_test = models.CharField(max_length=255)
+    clean_clearinghouse = models.BooleanField(default=False)
+    clean_drug_test = models.BooleanField(default=False)
 
     # -------------------- Driver Benefits Main --------------------
     main_weekly_deposits = models.BooleanField(default=False)
@@ -127,7 +129,10 @@ class JobOnboardingForm(models.Model):
 
     radius = models.CharField(max_length=100,null= True, blank=True )
     states = models.JSONField(default=list, null=True, blank=True)
-    
+
+    route = models.CharField(max_length=50, null= True, blank= True)
+    position = models.CharField(max_length=50, null= True, blank=True)
+
     def __str__(self):
         return self.company_name
     
