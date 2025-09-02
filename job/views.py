@@ -1327,3 +1327,30 @@ class JobPostCountView(APIView):
             "message": "Total job posts retrieved successfully.",
             "total_job_posts": total_job_posts
         })
+    
+
+
+from django.db.models import Count
+from rest_framework.permissions import IsAdminUser
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+class JobStatsAPIView(APIView):
+    permission_classes = [IsAdminUser]  # Only admin can access
+
+    def get(self, request):
+        # Total users
+        total_users = User.objects.filter(user_type="user").count()
+
+        # Total job posts
+        total_job_posts = JobTask.objects.filter(task_type="job_template_generation").count()
+
+        # Latest job blogs (last 5)
+        latest_job_blogs = JobBlog.objects.order_by("-created_at")[:5]
+        latest_job_blogs_data = JobBlogSerializer(latest_job_blogs, many=True).data
+
+        return Response({
+            "total_users": total_users,
+            "total_job_posts": total_job_posts,
+            "latest_job_blogs": latest_job_blogs_data
+        })

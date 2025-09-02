@@ -30,7 +30,8 @@ urlpatterns = [
     path('my-job-posts/', MyJobPostsView.as_view(), name='my-job-posts'),
     path('my-job-blogs/', MyJobBlogsView.as_view(), name='my-job-blogs'),
 
-    path('total-jobs/',JobPostCountView.as_view())
+    path('total-jobs/',JobPostCountView.as_view()),
+    path("all_stats/", JobStatsAPIView.as_view()),
 
     
 
