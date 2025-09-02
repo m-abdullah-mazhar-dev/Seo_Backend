@@ -2053,65 +2053,98 @@ def run_gmb_post_creation(task):
         task.save()
 
 
-class StopAutomation(APIView):
+# class StopAutomation(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request):
+#         user = request.user
+#         action = request.data.get("action")
+
+#         if not action:
+#             return Response({"success": False, "message": "action is required."}, status=400)
+
+#         task_type_map = {
+#             "keywords": "keyword_optimization",
+#             "blog": "blog_writing",
+#             "seo": "seo_optimization",
+#             "gmb_post" : "gmb_post"
+#         }
+
+#         task_type = task_type_map.get(action)
+#         if not task_type:
+#             return Response({"success": False, "message": "Invalid action."}, status=400)
+#         tasks = SEOTask.objects.filter(user=user, task_type=task_type, is_active=True)
+#         if not tasks.exists():
+#             return Response({"success": False, "message": f"No active {action} tasks found for user."}, status=404)
+
+#         tasks.update(is_active=False)
+#         return Response({"success": True, "message": f"{action.capitalize()} stopped successfully."})
+    
+
+
+# class StartAutomation(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request):
+#         user = request.user
+#         action = request.data.get("action")
+
+#         if not action:
+#             return Response({"success": False, "message": "Action is required."}, status=400)
+
+#         valid_actions = {
+#             "blog": "blog_writing",
+#             "seo": "seo_optimization",
+#             "keywords": "keyword_optimization",
+#             "gmb_post" : "gmb_post"
+#         }
+
+#         task_type = valid_actions.get(action)
+#         if not task_type:
+#             return Response({"success": False, "message": "Invalid action provided."}, status=400)
+
+#         # Get all inactive tasks of that type for the user
+#         tasks = SEOTask.objects.filter(user=user, task_type=task_type, is_active=False)
+#         if not tasks.exists():
+#             return Response({"success": False, "message": f"No inactive {action} tasks found for user."}, status=404)
+
+#         # Activate all those tasks
+#         tasks.update(is_active=True)
+
+#         return Response({"success": True, "message": f"{action.capitalize()} automation started successfully."})
+
+
+class AutomationToggleAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         user = request.user
-        action = request.data.get("action")
-
-        if not action:
-            return Response({"success": False, "message": "action is required."}, status=400)
 
         task_type_map = {
             "keywords": "keyword_optimization",
             "blog": "blog_writing",
             "seo": "seo_optimization",
-            "gmb_post" : "gmb_post"
+            "gmb_post": "gmb_post",
         }
 
-        task_type = task_type_map.get(action)
-        if not task_type:
-            return Response({"success": False, "message": "Invalid action."}, status=400)
-        tasks = SEOTask.objects.filter(user=user, task_type=task_type, is_active=True)
-        if not tasks.exists():
-            return Response({"success": False, "message": f"No active {action} tasks found for user."}, status=404)
+        updates = []
+        for key, task_type in task_type_map.items():
+            if key in request.data:  # Only process keys that are sent
+                value = request.data.get(key)
 
-        tasks.update(is_active=False)
-        return Response({"success": True, "message": f"{action.capitalize()} stopped successfully."})
-    
+                if isinstance(value, bool):  # Must be True/False
+                    tasks = SEOTask.objects.filter(user=user, task_type=task_type)
 
+                    if tasks.exists():
+                        tasks.update(is_active=value)
+                        state = "started" if value else "stopped"
+                        updates.append(f"{key} {state}")
+                    else:
+                        updates.append(f"No {key} tasks found")
+                else:
+                    updates.append(f"{key} must be true/false")
 
-class StartAutomation(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        user = request.user
-        action = request.data.get("action")
-
-        if not action:
-            return Response({"success": False, "message": "Action is required."}, status=400)
-
-        valid_actions = {
-            "blog": "blog_writing",
-            "seo": "seo_optimization",
-            "keywords": "keyword_optimization",
-            "gmb_post" : "gmb_post"
-        }
-
-        task_type = valid_actions.get(action)
-        if not task_type:
-            return Response({"success": False, "message": "Invalid action provided."}, status=400)
-
-        # Get all inactive tasks of that type for the user
-        tasks = SEOTask.objects.filter(user=user, task_type=task_type, is_active=False)
-        if not tasks.exists():
-            return Response({"success": False, "message": f"No inactive {action} tasks found for user."}, status=404)
-
-        # Activate all those tasks
-        tasks.update(is_active=True)
-
-        return Response({"success": True, "message": f"{action.capitalize()} automation started successfully."})
+        return Response({"success": True, "updates": updates})
 
 
 # Get Apis ---------------------------

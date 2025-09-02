@@ -19,8 +19,9 @@ urlpatterns = [
     path('my-blogs/<int:pk>/', MyBlogsView.as_view(), name='my-blog-detail'),
     path('edit-blog/<int:blog_id>/', BlogEditView.as_view(), name='edit-blog'),
 
-    path("stop/",StopAutomation.as_view()),
-    path("start/",StartAutomation.as_view()),
+    # path("stop/",StopAutomation.as_view()),
+    # path("start/",StartAutomation.as_view()),
+    path("start-stop/",AutomationToggleAPI.as_view()),
 
     path("user_details/", AdminClientListAPIView.as_view()),
 
