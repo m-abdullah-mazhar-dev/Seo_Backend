@@ -14,6 +14,7 @@ class Package(models.Model):
     gmb_post_limit = models.IntegerField(default=5)
     keyword_limit = models.IntegerField()
     seo_optimization_limit = models.IntegerField()
+    job_post_limit = models.IntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     stripe_price_id = models.CharField(max_length=200, null=True, blank=True)
 

@@ -54,11 +54,39 @@ class OnBoardingFormSerializer(serializers.ModelSerializer):
         ]
 
 
-    # def validate(self, attrs):
-    #     email = attrs.get("email")
-    #     if OnboardingForm.objects.filter(email=email).exists():
-    #         raise serializers.ValidationError({"email": "This email is already used in another onboarding form."})
-    #     return attrs
+    def validate(self, attrs):
+        package = attrs.get("package")
+        services = self.initial_data.get("services", [])
+        service_areas = self.initial_data.get("service_areas", [])
+        business_locations = self.initial_data.get("business_locations", [])
+
+        # 1️⃣ Check service limit
+        if len(services) > package.service_limit:
+            raise serializers.ValidationError({
+                "services": f"Your package allows only {package.service_limit} services."
+            })
+
+        # 2️⃣ Check keyword limit per service
+        for idx, service in enumerate(services, start=1):
+            keywords = service.get("keywords", [])
+            if len(keywords) > package.keyword_limit:
+                raise serializers.ValidationError({
+                    "services": f"Service {idx} exceeds keyword limit "
+                                f"({len(keywords)}/{package.keyword_limit})."
+                })
+
+        # 3️⃣ Check service area limit
+        if len(service_areas) > package.service_area_limit:
+            raise serializers.ValidationError({
+                "service_areas": f"Your package allows only {package.service_area_limit} service areas."
+            })
+
+        # 4️⃣ Check business location limit
+        if len(business_locations) > package.business_location_limit:
+            raise serializers.ValidationError({
+                "business_locations": f"Your package allows only {package.business_location_limit} locations."
+            })
+        return attrs
     
     def create(self, validated_data):
         services_data = validated_data.pop('services')
