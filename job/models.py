@@ -125,6 +125,9 @@ class JobOnboardingForm(models.Model):
     repair_shop_onsite = models.BooleanField(default=False)
     gated_vehicle_parking = models.BooleanField(default=False)
 
+    radius = models.CharField(max_length=100,null= True, blank=True )
+    states = models.JSONField(default=list, null=True, blank=True)
+    
     def __str__(self):
         return self.company_name
     
