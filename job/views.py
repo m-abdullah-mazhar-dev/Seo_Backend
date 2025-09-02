@@ -1306,5 +1306,6 @@ class MyJobBlogsView(APIView):
         return Response({
             "success": True, 
             "message": "Job blogs retrieved successfully.", 
+            "blog_count": job_blogs.count(),
             "data": serializer.data
         })
