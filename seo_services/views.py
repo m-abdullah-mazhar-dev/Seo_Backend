@@ -58,7 +58,29 @@ class PackageCreateAPIView(APIView):
         packages = Package.objects.all()
         serializer = PackageSerializer(packages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def put(self, request, pk):
+        package = get_object_or_404(Package, pk=pk)
+        serializer = PackageSerializer(package, data=request.data, partial=True)
 
+        if serializer.is_valid():
+            price_usd = request.data.get("price")
+            if price_usd:
+                amount_cents = int(Decimal(price_usd) * 100)
+
+                # Create new Stripe Price
+                try:
+                    _, new_price_id = create_stripe_product_and_price(
+                        package, amount_cents=amount_cents
+                    )
+                    package.stripe_price_id = new_price_id
+                except Exception as e:
+                    return Response({"error": f"Stripe error: {str(e)}"}, status=500)
+
+            serializer.save(price=price_usd)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class OnBoardingFormAPIView(APIView):
     permission_classes = [IsAuthenticated]
