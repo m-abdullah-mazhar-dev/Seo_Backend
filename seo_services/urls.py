@@ -24,6 +24,7 @@ urlpatterns = [
     path("start-stop/",AutomationToggleAPI.as_view()),
 
     path("user_details/", AdminClientListAPIView.as_view()),
+    path("all_stats/", SEOStatsAPIView.as_view()),
 
 
     path("company_details/", CompanyDetailsAPIView.as_view()),

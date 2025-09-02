@@ -2356,8 +2356,38 @@ class AdminClientListAPIView(APIView):
     def get(self, request):
         users = User.objects.filter(user_type='user')
         serializer = AdminClientDetailSerializer(users, many=True)
-        return Response(serializer.data)
+        return Response({
+            "count": users.count(),   # 👈 added
+            "data": serializer.data
+        })
 
+
+from django.db.models import Sum
+class SEOStatsAPIView(APIView):
+    permission_classes = [IsAdminUser]  # Only admin can access
+
+    def get(self, request):
+        # Total counts
+        total_users = User.objects.filter(user_type="user").count()
+        total_blogs = Blog.objects.count()
+
+        # Top keywords by impressions
+        top_keywords = (
+            Keyword.objects.annotate(total_impressions=Sum("impressions"))
+            .order_by("-total_impressions")[:5]  # Top 5
+            .values("keyword", "clicks", "impressions")
+        )
+
+        # Latest blogs (last 5)
+        latest_blogs = Blog.objects.order_by("-created_at")[:5]
+        latest_blogs_data = BlogSerializer(latest_blogs, many=True).data
+
+        return Response({
+            "total_users": total_users,
+            "total_blogs": total_blogs,
+            "top_keywords": list(top_keywords),
+            "latest_blogs": latest_blogs_data
+        })
 
 
 from rest_framework.views import APIView
