@@ -1111,7 +1111,7 @@ def map_job_form_to_api_payload(job_form):
         "mc_number": job_form.mc_dot_number.split('/')[0] if '/' in job_form.mc_dot_number else job_form.mc_dot_number,
         "dot_number": job_form.mc_dot_number.split('/')[1] if '/' in job_form.mc_dot_number and len(job_form.mc_dot_number.split('/')) > 1 else "",
         "driver_requirements": [req for req in driver_requirements if req],  # Remove empty strings
-        "home_time": ["HOME TIME VARIES"],  # Default assumption
+        "home_time": job_form.home_time,  # Default assumption
         "driver_benefits": driver_benefits,
         "equipment": equipment,
         "travel": travel,
