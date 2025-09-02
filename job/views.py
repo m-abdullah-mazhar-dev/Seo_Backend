@@ -1140,8 +1140,9 @@ def run_job_template_generation(task):
 
         # Monthly check - same logic as before
         current_month = timezone.now().strftime("%Y-%m")
-        onboarding_form = user.onboardingform.last()
-        package = onboarding_form.package
+        # onboarding_form = user.onboardingform.last()
+        # package = onboarding_form.package
+        package = getattr(user.usersubscription, "package", None)
         if not package:
             logger.warning("⚠ No package found for user.")
             task.status = "failed"
