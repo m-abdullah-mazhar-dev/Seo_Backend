@@ -298,11 +298,64 @@ class BlogEditSerializer(serializers.ModelSerializer):
         return value
 
 
+# class AdminClientDetailSerializer(serializers.ModelSerializer):
+#     full_name = serializers.SerializerMethodField()
+#     gbp_status = serializers.SerializerMethodField()
+#     wp_status = serializers.SerializerMethodField()
+#     payment_status = serializers.SerializerMethodField()
+
+#     blogs = serializers.SerializerMethodField()
+#     onboarding = serializers.SerializerMethodField()
+
+#     class Meta:
+#         model = User
+#         fields = [
+#             'id', 'full_name', 'email', 'phone_number',
+#             'gbp_status', 'wp_status', 'payment_status',
+#             'blogs', 'onboarding'
+#         ]
+
+#     def get_full_name(self, obj):
+#         return f"{obj.first_name} {obj.last_name}"
+
+#     def get_gbp_status(self, obj):
+#         return None  # No GBP yet
+
+#     def get_wp_status(self, obj):
+#         return "Connected" if hasattr(obj, 'wordpress_connection') else "Not Connected"
+
+#     def get_payment_status(self, obj):
+#         try:
+#             return obj.usersubscription.status
+#         except UserSubscription.DoesNotExist:
+#             return "No Subscription"
+
+#     def get_blogs(self, obj):
+#         blogs = Blog.objects.filter(seo_task__user=obj, seo_task__task_type="blog_writing")
+#         return BlogSerializer(blogs, many=True).data
+
+#     def get_onboarding(self, obj):
+#         onboarding = OnboardingForm.objects.filter(user=obj).first()
+#         if onboarding:
+#             return {
+#                 "company_name": onboarding.company_name,
+#                 "phone_number": onboarding.phone_number,
+#                 "email": onboarding.email,
+#                 "services": ServiceSerializer(onboarding.services.all(), many=True).data,
+#                 "service_areas": ServiceAreaSerializer(onboarding.service_areas.all(), many=True).data,
+#                 "business_locations": BusinessLocationSerializer(onboarding.locations.all(), many=True).data
+#             }
+#         return {}
+
+
+from g_matrix.models import *
 class AdminClientDetailSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     gbp_status = serializers.SerializerMethodField()
     wp_status = serializers.SerializerMethodField()
     payment_status = serializers.SerializerMethodField()
+    search_console_status = serializers.SerializerMethodField()
+    analytics_status = serializers.SerializerMethodField()
 
     blogs = serializers.SerializerMethodField()
     onboarding = serializers.SerializerMethodField()
@@ -310,30 +363,61 @@ class AdminClientDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'full_name', 'email', 'phone_number',
-            'gbp_status', 'wp_status', 'payment_status',
-            'blogs', 'onboarding'
+            "id", "full_name", "email", "phone_number",
+            "gbp_status", "wp_status", "payment_status",
+            "search_console_status", "analytics_status",
+            "blogs", "onboarding"
         ]
 
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}"
+        return f"{obj.first_name} {obj.last_name}".strip()
 
+    # ✅ Google Business Profile (GBP)
     def get_gbp_status(self, obj):
-        return None  # No GBP yet
+        token = GoogleBusinessToken.objects.filter(user=obj).first()
+        if not token:
+            return "Not Connected"
+        expiry = token.credentials.get("expiry") if token.credentials else None
+        if expiry and timezone.now() >= timezone.datetime.fromisoformat(expiry):
+            return "Expired"
+        return "Connected"
 
+    # ✅ WordPress
     def get_wp_status(self, obj):
-        return "Connected" if hasattr(obj, 'wordpress_connection') else "Not Connected"
+        return "Connected" if hasattr(obj, "wordpress_connection") else "Not Connected"
 
+    # ✅ Payment
     def get_payment_status(self, obj):
         try:
             return obj.usersubscription.status
         except UserSubscription.DoesNotExist:
             return "No Subscription"
 
+    # ✅ Search Console
+    def get_search_console_status(self, obj):
+        token = SearchConsoleToken.objects.filter(user=obj).first()
+        if not token:
+            return "Not Connected"
+        expiry = token.credentials.get("expiry") if token.credentials else None
+        if expiry and timezone.now() >= timezone.datetime.fromisoformat(expiry):
+            return "Expired"
+        return "Connected"
+
+    # ✅ Analytics
+    def get_analytics_status(self, obj):
+        token = GoogleAnalyticsToken.objects.filter(user=obj).first()
+        if not token:
+            return "Not Connected"
+        if token.token_expiry and token.token_expiry <= timezone.now():
+            return "Expired"
+        return "Connected"
+
+    # ✅ Blogs
     def get_blogs(self, obj):
         blogs = Blog.objects.filter(seo_task__user=obj, seo_task__task_type="blog_writing")
         return BlogSerializer(blogs, many=True).data
 
+    # ✅ Onboarding
     def get_onboarding(self, obj):
         onboarding = OnboardingForm.objects.filter(user=obj).first()
         if onboarding:
@@ -343,7 +427,7 @@ class AdminClientDetailSerializer(serializers.ModelSerializer):
                 "email": onboarding.email,
                 "services": ServiceSerializer(onboarding.services.all(), many=True).data,
                 "service_areas": ServiceAreaSerializer(onboarding.service_areas.all(), many=True).data,
-                "business_locations": BusinessLocationSerializer(onboarding.locations.all(), many=True).data
+                "business_locations": BusinessLocationSerializer(onboarding.locations.all(), many=True).data,
             }
         return {}
     
