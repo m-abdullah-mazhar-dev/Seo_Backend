@@ -24,6 +24,16 @@ class CreateSubscription(APIView):
             package = Package.objects.get(id=package_id)
             user = request.user
 
+            # 0️⃣ Check if user already has an active subscription
+            existing_sub = UserSubscription.objects.filter(user=user).first()
+            if existing_sub and existing_sub.status == "active":
+                return Response({
+                    "message": "You already have an active subscription.",
+                    "subscription_id": existing_sub.stripe_subscription_id,
+                    "customer_id": existing_sub.stripe_customer_id,
+                    "plan": existing_sub.package.name
+                }, status=400)
+
             # 1. Create Stripe Customer
             customer = stripe.Customer.create(
                 email=user.email,
@@ -63,13 +73,31 @@ class CreateSubscription(APIView):
                 client_secret = subscription.latest_invoice.payment_intent.client_secret
 
             # 4. Save to database
-            UserSubscription.objects.create(
+            # UserSubscription.objects.create(
+            #     user=user,
+            #     package=package,
+            #     stripe_customer_id=customer.id,
+            #     stripe_subscription_id=subscription.id,
+            #     status='incomplete',
+            # )
+
+            user_subscription, created = UserSubscription.objects.get_or_create(
                 user=user,
-                package=package,
-                stripe_customer_id=customer.id,
-                stripe_subscription_id=subscription.id,
-                status='incomplete',
+                defaults={
+                    "package": package,
+                    "stripe_customer_id": customer.id,
+                    "stripe_subscription_id": subscription.id,
+                    "status": "incomplete",
+                }
             )
+
+            if not created:
+                # Update existing subscription
+                user_subscription.package = package
+                user_subscription.stripe_customer_id = customer.id
+                user_subscription.stripe_subscription_id = subscription.id
+                user_subscription.status = "incomplete"
+                user_subscription.save()
 
             return Response({
                 'client_secret': client_secret,
