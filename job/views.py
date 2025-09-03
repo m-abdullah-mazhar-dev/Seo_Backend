@@ -69,7 +69,7 @@ class CreateJobOnboardingFormAPIView(APIView):
     
     def get(self, request, pk=None, format=None):
         if pk:
-            form = get_object_or_404(JobOnboardingForm, pk=pk,user = request.user)
+            form = get_object_or_404(JobOnboardingForm,user = request.user)
             serializer = JobOnboardingFormSerializer(form)
             return Response({
                 "message": f"Onboarding form ID {pk} fetched successfully",
