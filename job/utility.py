@@ -69,7 +69,8 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload ):
             pay_structure = "Pay Not Specified"
             pay_value = "N/A"
     # title = f"{job_form.company_name} - Hiring CDL Drivers"
-    title = f"{route} {position} – {equipment} – {pay_structure} – {pay_value}"
+    title = f"{route.upper()} {position} – {equipment} – {pay_structure} – {pay_value}"
+    map_html = generate_map_html(api_payload)
 
     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
 
@@ -77,7 +78,8 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload ):
     post_data = {
         "title": title,
         "slug": slug,
-        "content": f"<div>{html_content}</div>",
+        "content": f"<div>{html_content}</div>{map_html}",
+        # "content": f"<div>{html_content}</div>",
         "status": "publish",
         "categories": [category_id], 
     }
@@ -95,6 +97,67 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload ):
 
     if response.status_code not in [200, 201]:
         raise Exception(f"WordPress upload failed: {response.text}")
+
+
+
+def generate_map_html(api_payload):
+    """
+    Generate USA map HTML based on route type and hiring area.
+    - Local: radius only, no map
+    - Regional: highlight states on USA map
+    - OTR: show full USA map
+    """
+    route = api_payload.get("route", "").lower()
+    hiring_area = api_payload.get("hiring_area", {})
+    states = hiring_area.get("states", [])
+    radius = api_payload.get("radius")
+
+    # Local → no map, just radius text
+    if route == "local" and radius:
+        return f"<p><strong>Hiring Radius:</strong> Within {radius} miles</p>"
+
+    # Regional → highlight specific states
+    if route == "regional" and states:
+        states_js = ",".join([f'"{s}"' for s in states])
+        return f"""
+        <div id="regional-map" style="width: 100%; height: 500px;"></div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+        <script>
+        var states = [{states_js}];
+        var map = new Datamap({{
+            element: document.getElementById('regional-map'),
+            scope: 'usa',
+            fills: {{
+                defaultFill: '#D6DBDF',
+                highlight: '#2E86C1'
+            }},
+            data: states.reduce((acc, s) => {{
+                acc[s] = {{ fillKey: 'highlight' }};
+                return acc;
+            }}, {{}})
+        }});
+        </script>
+        """
+
+    # OTR → full USA map
+    if route == "otr":
+        return """
+        <div id="otr-map" style="width: 100%; height: 500px;"></div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+        <script>
+        var map = new Datamap({
+            element: document.getElementById('otr-map'),
+            scope: 'usa',
+            fills: { defaultFill: '#2E86C1' }
+        });
+        </script>
+        """
+
+    return ""
 
 
 
