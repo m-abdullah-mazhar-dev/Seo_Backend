@@ -19,6 +19,9 @@ import re
 from .utils import call_dataforseo_keyword_suggestions, create_stripe_product_and_price, extract_keyword_suggestions, find_best_keyword_alternative
 from rest_framework.permissions import IsAdminUser
 from rest_framework.decorators import api_view, permission_classes
+import stripe
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,20 @@ class PackageCreateAPIView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        package = get_object_or_404(Package, pk=pk)
+        try:
+            # Optional: delete from Stripe too
+            if package.stripe_product_id:
+                stripe.Product.modify(
+                    package.stripe_product_id,
+                    active=False  # safer than deleting (keeps history)
+                )
+            package.delete()
+            return Response({"message": "Package deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class OnBoardingFormAPIView(APIView):
     permission_classes = [IsAuthenticated]

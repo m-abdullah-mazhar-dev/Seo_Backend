@@ -17,6 +17,7 @@ class Package(models.Model):
     job_post_limit = models.IntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     stripe_price_id = models.CharField(max_length=200, null=True, blank=True)
+    stripe_product_id = models.CharField(max_length=200, null=True, blank=True)
 
 class OnboardingForm(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE,related_name="onboardingform")
