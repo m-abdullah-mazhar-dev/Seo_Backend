@@ -1095,6 +1095,9 @@ def map_job_form_to_api_payload(job_form):
                 hiring_area["states"].append(area)
             else:  # Likely a region name
                 hiring_area["regions"].append(area)
+                
+    if job_form.states:
+        hiring_area["states"].extend(job_form.states)
     
     # Construct the API payload
     payload = {
