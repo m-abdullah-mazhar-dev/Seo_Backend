@@ -2184,6 +2184,26 @@ class AutomationToggleAPI(APIView):
                     updates.append(f"{key} must be true/false")
 
         return Response({"success": True, "updates": updates})
+    
+    def get(self, request):
+        user = request.user
+
+        task_type_map = {
+            "keywords": "keyword_optimization",
+            "blog": "blog_writing",
+            "seo": "seo_optimization",
+            "gmb_post": "gmb_post",
+        }
+
+        status_data = {}
+        for key, task_type in task_type_map.items():
+            tasks = SEOTask.objects.filter(user=user, task_type=task_type)
+            if tasks.exists():
+                status_data[key] = tasks.first().is_active
+            else:
+                status_data[key] = None  # No tasks found
+
+        return Response({"success": True, "status": status_data})
 
 
 # Get Apis ---------------------------
