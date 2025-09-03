@@ -17,7 +17,7 @@ class JobOnboardingForm(models.Model):
     drivers_weekly_earning = models.CharField(max_length=100,null=True,blank=True)
     drivers_weekly_miles = models.CharField(max_length=100,null=True,blank=True)
     cpm = models.CharField(max_length=100,null=True,blank=True)
-    driver_percentage = models.CharField(max_length=100, help_text="If applicable")
+    driver_percentage = models.CharField(max_length=100, help_text="If applicable", null=True, blank=True)
     truck_make_year = models.CharField(max_length=255)
     hauling_equipment = models.TextField()
 
