@@ -188,6 +188,12 @@ class JobTask(models.Model):
     ctr = models.FloatField(default=0)
     last_metrics_update = models.DateTimeField(blank=True, null=True)
 
+    ga4_page_views = models.IntegerField(default=0)
+    ga4_avg_time_on_page = models.FloatField(default=0)
+    ga4_bounce_rate = models.FloatField(default=0)
+    ga4_last_updated = models.DateTimeField(blank=True, null=True)
+
+
     def __str__(self):
         return f"{self.user.email} - {self.get_task_type_display()} - {self.status}"
     
@@ -221,6 +227,11 @@ class JobBlog(models.Model):
     impressions = models.IntegerField(default=0)
     ctr = models.FloatField(default=0)
     last_metrics_update = models.DateTimeField(blank=True, null=True)
+
+    ga4_page_views = models.IntegerField(default=0)
+    ga4_avg_time_on_page = models.FloatField(default=0) # in seconds
+    ga4_bounce_rate = models.FloatField(default=0) # stored as a decimal (e.g., 0.55 for 55%)
+    ga4_last_updated = models.DateTimeField(blank=True, null=True)
 
 
 class JobBlogImage(models.Model):
