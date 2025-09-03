@@ -51,7 +51,7 @@ class CreateJobOnboardingFormAPIView(APIView):
 
             try:
                 # task = create_initial_job_blog_task(user, job_form)
-                blog_task, template_task = create_initial_job_tasks(user, job_form)
+                template_task = create_initial_job_tasks(user, job_form)
                 print("task created successfully ")
             except Exception as e:
                 return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
@@ -1081,23 +1081,61 @@ def map_job_form_to_api_payload(job_form):
         extra.append(job_form.escrow_description.upper())
     
     # Parse hiring areas from primary_running_areas
+    # hiring_area = {
+    #     "regions": [],
+    #     "states": []
+    # }
+    
+    # if job_form.primary_running_areas:
+    #     # Simple parsing - this could be enhanced with more sophisticated logic
+    #     areas = job_form.primary_running_areas.split(',')
+    #     for area in areas:
+    #         area = area.strip()
+    #         if len(area) == 2 and area.isupper():  # Likely a state code
+    #             hiring_area["states"].append(area)
+    #         else:  # Likely a region name
+    #             hiring_area["regions"].append(area)
+
+    # if job_form.states:
+    #     hiring_area["states"].extend(job_form.states)
+
+
+    # Parse hiring areas from primary_running_areas
     hiring_area = {
         "regions": [],
-        "states": []
+        "states": [],
+        "radius": None,   # local ke liye
+        "type": None      # local / regional / otr
     }
-    
-    if job_form.primary_running_areas:
-        # Simple parsing - this could be enhanced with more sophisticated logic
-        areas = job_form.primary_running_areas.split(',')
-        for area in areas:
-            area = area.strip()
-            if len(area) == 2 and area.isupper():  # Likely a state code
-                hiring_area["states"].append(area)
-            else:  # Likely a region name
-                hiring_area["regions"].append(area)
-                
-    if job_form.states:
-        hiring_area["states"].extend(job_form.states)
+
+    if job_form.route:  
+        route_type = job_form.route.lower().strip()
+        
+        if route_type == "local":
+            hiring_area["type"] = "local"
+            # Local case: sirf radius use hogi (map nahi)
+            hiring_area["radius"] = job_form.radius if hasattr(job_form, "radius") else None
+
+            hiring_area["regions"] = []
+            hiring_area["states"] = []
+        
+        elif route_type == "regional":
+            hiring_area["type"] = "regional"
+            if job_form.primary_running_areas:
+                areas = job_form.primary_running_areas.split(',')
+                for area in areas:
+                    area = area.strip()
+                    if len(area) == 2 and area.isupper():  # Likely a state code
+                        hiring_area["states"].append(area)
+                    else:  # Likely a region name
+                        hiring_area["regions"].append(area)
+            if job_form.states:
+                hiring_area["states"].extend(job_form.states)
+        
+        elif route_type == "otr":
+            hiring_area["type"] = "otr"
+            # OTR case: full USA map, koi extra filter nahi
+            hiring_area["regions"] = ["USA"]
     
     # Construct the API payload
     payload = {
@@ -1257,16 +1295,16 @@ def create_initial_job_tasks(user, job_onboarding):
     current_month = timezone.now().strftime("%Y-%m")
     
     # Create blog task
-    blog_task = JobTask.objects.create(
-        user=user,
-        job_onboarding=job_onboarding,
-        task_type='job_blog_writing',
-        next_run=timezone.now(),
-        status='pending',
-        count_this_month=0,
-        month_year=current_month,
-        is_active=True
-    )
+    # blog_task = JobTask.objects.create(
+    #     user=user,
+    #     job_onboarding=job_onboarding,
+    #     task_type='job_blog_writing',
+    #     next_run=timezone.now(),
+    #     status='pending',
+    #     count_this_month=0,
+    #     month_year=current_month,
+    #     is_active=True
+    # )
     
     # Create template task
     template_task = JobTask.objects.create(
@@ -1281,7 +1319,8 @@ def create_initial_job_tasks(user, job_onboarding):
     )
     
     logger.info(f"✅ Initial job tasks created for user {user.email}")
-    return blog_task, template_task
+    # return blog_task , template_task
+    return  template_task
 
 
 # -------------------
