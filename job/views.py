@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from g_matrix.google_service import build_service
-from g_matrix.models import SearchConsoleToken
+from g_matrix.models import GoogleAnalyticsToken, SearchConsoleToken
 from job.models import *
 from job.utility import create_initial_job_blog_task, generate_structured_job_html, upload_job_post_to_wordpress
 from seo_services.models import WordPressConnection
@@ -1824,3 +1824,140 @@ class JobPerformanceDashboardView(APIView):
         }
 
         return Response(response_data)
+    
+
+# api/views.py
+from django.db.models import Q
+from urllib.parse import urlparse
+
+class JobContentAnalyticsView(APIView):
+    """
+    API to fetch Google Analytics 4 data specifically for published Job Blogs and Job Postings.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            user = request.user
+            # 1. Get the user's GA4 token and property ID
+            try:
+                token = GoogleAnalyticsToken.objects.get(user=user)
+            except GoogleAnalyticsToken.DoesNotExist:
+                return Response({"error": "Google Analytics not connected."}, status=400)
+
+            if not token.property_id:
+                return Response({"error": "Google Analytics property not set."}, status=400)
+
+            # 2. Get all URLs we want to filter for
+            job_blogs = JobBlog.objects.filter(job_task__user=user, wp_post_url__isnull=False).exclude(wp_post_url='')
+            job_posting_tasks = JobTask.objects.filter(user=user, task_type='job_template_generation', wp_page_url__isnull=False).exclude(wp_page_url='')
+            
+            all_urls = [blog.wp_post_url for blog in job_blogs] + [task.wp_page_url for task in job_posting_tasks]
+            
+            if not all_urls:
+                return Response({"message": "No published job blogs or postings found."}, status=200)
+
+            # Extract just the paths for filtering
+            page_paths = []
+            for url in all_urls:
+                parsed = urlparse(url)
+                page_paths.append(parsed.path) # e.g., '/local-owner-operator.../'
+
+            page_paths = list(set(page_paths))
+            print(f"Fetching Analytics for paths: {page_paths}")
+
+            headers = {
+                "Authorization": f"Bearer {token.access_token}",
+                "Content-Type": "application/json"
+            }
+
+            # 3. Prepare the GA4 API Request Body
+            # We filter specifically for the page paths of our job content
+            analytics_body = {
+                "dateRanges": [{"startDate": "30daysAgo", "endDate": "today"}],
+                "metrics": [
+                    {"name": "screenPageViews"},
+                    {"name": "userEngagementDuration"}, # Total time spent on these pages
+                    {"name": "engagedSessions"},
+                    {"name": "averageSessionDuration"}, # Avg. session duration
+                    {"name": "bounceRate"},
+                ],
+                "dimensions": [
+                    {"name": "pagePath"}, # We group by the page path
+                    {"name": "pageTitle"},
+                ],
+                "dimensionFilter": {
+                    "filter": {
+                        "fieldName": "pagePath",
+                        "inListFilter": {
+                            "values": page_paths,
+                        }
+                    }
+                }
+            }
+
+            analytics_url = f"https://analyticsdata.googleapis.com/v1beta/properties/{token.property_id}:runReport"
+            analytics_resp = requests.post(analytics_url, headers=headers, json=analytics_body)
+            
+            if analytics_resp.status_code != 200:
+                return Response({"error": "Analytics API error", "details": analytics_resp.json()}, status=analytics_resp.status_code)
+
+            analytics_data = analytics_resp.json().get("rows", [])
+            print(f"Found {len(analytics_data)} rows in Analytics API response.")
+
+            updated_records = []
+            # 4. Process the response and update our models
+            for row in analytics_data:
+                dimension_vals = row.get('dimensionValues', [])
+                metric_vals = row.get('metricValues', [])
+                
+                if not dimension_vals or not metric_vals:
+                    continue
+                    
+                page_path = dimension_vals[0].get('value') # e.g., '/local-owner-operator.../'
+                page_title = dimension_vals[1].get('value', 'N/A')
+                
+                page_views = int(metric_vals[0].get('value', 0))
+                total_engagement_time = float(metric_vals[1].get('value', 0)) # Total seconds
+                engaged_sessions = int(metric_vals[2].get('value', 0))
+                avg_session_duration = float(metric_vals[3].get('value', 0))
+                bounce_rate = float(metric_vals[4].get('value', 0)) # Already a decimal (0.XX)
+
+                # Calculate Average Time on Page (Total engagement time / Number of page views)
+                avg_time_on_page = round(total_engagement_time / page_views, 2) if page_views > 0 else 0
+
+                print(f"Processing Analytics for: {page_path} | Views: {page_views} | Avg Time: {avg_time_on_page}s")
+
+                # Find the corresponding model object and update it
+                # Check JobBlogs first
+                for blog in job_blogs:
+                    parsed_blog_url = urlparse(blog.wp_post_url)
+                    if parsed_blog_url.path == page_path:
+                        blog.ga4_page_views = page_views
+                        blog.ga4_avg_time_on_page = avg_time_on_page
+                        blog.ga4_bounce_rate = bounce_rate
+                        blog.save()
+                        updated_records.append({'type': 'JobBlog', 'id': blog.id, 'title': blog.title})
+                        break
+                else:
+                    # If not a blog, check Job Posting Tasks
+                    for task in job_posting_tasks:
+                        parsed_task_url = urlparse(task.wp_page_url)
+                        if parsed_task_url.path == page_path:
+                            task.ga4_page_views = page_views
+                            task.ga4_avg_time_on_page = avg_time_on_page
+                            task.ga4_bounce_rate = bounce_rate
+                            task.save()
+                            updated_records.append({'type': 'JobPosting', 'id': task.id})
+                            break
+
+            return Response({
+                'updated_count': len(updated_records),
+                'updated_records': updated_records,
+                'analytics_rows_found': len(analytics_data),
+                'queried_paths': page_paths
+            })
+
+        except Exception as e:
+            print(f"Error in JobContentAnalyticsView: {str(e)}")
+            return Response({"error": str(e)}, status=500)
