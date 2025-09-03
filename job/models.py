@@ -135,6 +135,8 @@ class JobOnboardingForm(models.Model):
 
     home_time = models.JSONField(default=list, blank=True)
 
+    earning_type = models.CharField(max_length=50, null=True, blank= True)
+
     def __str__(self):
         return self.company_name
     
