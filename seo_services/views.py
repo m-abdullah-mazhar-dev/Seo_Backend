@@ -2392,6 +2392,7 @@ class SEOStatsAPIView(APIView):
         # Total counts
         total_users = User.objects.filter(user_type="user").count()
         total_blogs = Blog.objects.count()
+        total_service_page = SEOTask.objects.filter(task_type = "seo_optimization").count()
 
         # Top keywords by impressions
         top_keywords = (
@@ -2407,6 +2408,7 @@ class SEOStatsAPIView(APIView):
         return Response({
             "total_users": total_users,
             "total_blogs": total_blogs,
+            "total_service_page": total_service_page,
             "top_keywords": list(top_keywords),
             "latest_blogs": latest_blogs_data
         })
