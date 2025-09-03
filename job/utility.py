@@ -44,7 +44,7 @@ def get_or_create_category(wp_conn, slug, name=None, description=""):
         raise Exception(f"❌ Failed to create '{slug}' category: {response.text}")
 
 
-def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload ):
+def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload, job_task ):
     wp_conn = wp_conn
 
         # Prefer AI request payload if available (more reliable than free-text AI response)
@@ -97,6 +97,18 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload ):
 
     if response.status_code not in [200, 201]:
         raise Exception(f"WordPress upload failed: {response.text}")
+    
+    response_data = response.json()
+    page_url = response_data.get('link') # This is the published URL
+    post_id = response_data.get('id')
+
+    # Update the JobTask with the URL and publish date
+    job_task.wp_page_url = page_url
+    job_task.published_date = timezone.now()
+    job_task.save()
+
+    logger.info(f"✅ Job Post uploaded to WordPress. URL: {page_url}")
+    return page_url
 
 
 

@@ -33,6 +33,10 @@ urlpatterns = [
     path('total-jobs/',JobPostCountView.as_view()),
     path("all_stats/", JobStatsAPIView.as_view()),
 
+
+
+    path('jobs/sync/', JobContentMetricsView.as_view(), name='sync-job-metrics'),
+    path('jobs/performance/', JobPerformanceDashboardView.as_view(), name='job-performance-dashboard'),
     
 
 ]

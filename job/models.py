@@ -180,6 +180,14 @@ class JobTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    wp_page_url = models.URLField(blank=True, null=True) # URL of the published job page
+    published_date = models.DateTimeField(blank=True, null=True)
+    # Metrics fields
+    clicks = models.IntegerField(default=0)
+    impressions = models.IntegerField(default=0)
+    ctr = models.FloatField(default=0)
+    last_metrics_update = models.DateTimeField(blank=True, null=True)
+
     def __str__(self):
         return f"{self.user.email} - {self.get_task_type_display()} - {self.status}"
     
@@ -191,6 +199,8 @@ class JobBlog(models.Model):
     content = models.TextField()
     wp_post_id = models.CharField(max_length=100, null=True, blank=True)
     wp_post_url = models.URLField(max_length=500, null=True, blank=True)
+
+    published_date = models.DateTimeField(blank=True, null=True)
 
     wp_status = models.CharField(
         max_length=50,
@@ -205,6 +215,12 @@ class JobBlog(models.Model):
         ]
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # Metrics fields (to be populated by our new API)
+    clicks = models.IntegerField(default=0)
+    impressions = models.IntegerField(default=0)
+    ctr = models.FloatField(default=0)
+    last_metrics_update = models.DateTimeField(blank=True, null=True)
 
 
 class JobBlogImage(models.Model):

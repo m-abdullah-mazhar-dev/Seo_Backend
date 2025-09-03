@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
+from g_matrix.google_service import build_service
+from g_matrix.models import SearchConsoleToken
 from job.models import *
 from job.utility import create_initial_job_blog_task, generate_structured_job_html, upload_job_post_to_wordpress
 from seo_services.models import WordPressConnection
@@ -1251,7 +1253,7 @@ def run_job_template_generation(task):
         if hasattr(user, 'wordpress_connection'):
             # Convert the template text to HTML
             html_content = f"<div>{job_template.replace('**', '<strong>').replace('*', '<li>').replace('\n', '<br>')}</div>"
-            upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content,api_payload=api_payload)
+            upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content,api_payload=api_payload, job_task=task)
 
         # Auto-create next task if limit not reached - same logic as before
         if task.count_this_month < package_limit:
@@ -1295,16 +1297,16 @@ def create_initial_job_tasks(user, job_onboarding):
     current_month = timezone.now().strftime("%Y-%m")
     
     # Create blog task
-    # blog_task = JobTask.objects.create(
-    #     user=user,
-    #     job_onboarding=job_onboarding,
-    #     task_type='job_blog_writing',
-    #     next_run=timezone.now(),
-    #     status='pending',
-    #     count_this_month=0,
-    #     month_year=current_month,
-    #     is_active=True
-    # )
+    blog_task = JobTask.objects.create(
+        user=user,
+        job_onboarding=job_onboarding,
+        task_type='job_blog_writing',
+        next_run=timezone.now(),
+        status='pending',
+        count_this_month=0,
+        month_year=current_month,
+        is_active=True
+    )
     
     # Create template task
     template_task = JobTask.objects.create(
@@ -1319,8 +1321,8 @@ def create_initial_job_tasks(user, job_onboarding):
     )
     
     logger.info(f"✅ Initial job tasks created for user {user.email}")
-    # return blog_task , template_task
-    return  template_task
+    return blog_task , template_task
+    # return  template_task
 
 
 # -------------------
@@ -1398,3 +1400,427 @@ class JobStatsAPIView(APIView):
             "total_job_posts": total_job_posts,
             "latest_job_blogs": latest_job_blogs_data
         })
+
+
+
+
+
+# api/views.py
+from django.db.models import Q
+from urllib.parse import urlparse
+from datetime import datetime, timedelta
+from django.utils import timezone
+from googleapiclient.errors import HttpError
+
+
+class JobContentMetricsView(APIView):
+    """
+    API to fetch Search Console metrics for all published Job Blogs and Job Postings (JobTasks)
+    for the authenticated user.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        try:
+            token = SearchConsoleToken.objects.get(user=user)
+        except SearchConsoleToken.DoesNotExist:
+            return Response({"error": "Search Console not connected"}, status=400)
+
+        # 1. Get all Job Blogs with URLs
+        job_blogs = JobBlog.objects.filter(
+            job_task__user=user,
+            wp_post_url__isnull=False
+        ).exclude(wp_post_url='')
+        # 2. Get all Job Posting TASKS with URLs
+        job_posting_tasks = JobTask.objects.filter(
+            user=user,
+            task_type='job_template_generation', # Only get job posting tasks
+            wp_page_url__isnull=False
+        ).exclude(wp_page_url='')
+
+        # Combine all URLs from both models
+        all_urls = [blog.wp_post_url for blog in job_blogs] + [task.wp_page_url for task in job_posting_tasks]
+
+        if not all_urls:
+            return Response({"message": "No published job blogs or postings found."}, status=200)
+
+        service = build_service(token.credentials)
+        end_date = timezone.now().date()
+        start_date = end_date - timedelta(days=30)
+
+        # Handle the siteUrl format (domain vs. URL-prefix)
+        if token.site_url.startswith('sc-domain:'):
+            domain = token.site_url.replace('sc-domain:', 'https://')
+        else:
+            domain = token.site_url.rstrip('/')
+
+        # Build full URL expressions for the API query
+        page_expressions = []
+        for url in all_urls:
+            parsed = urlparse(url)
+            if parsed.netloc:
+                page_expressions.append(url)
+            else:
+                page_expressions.append(f"{domain}{parsed.path}")
+
+        page_expressions = list(set(page_expressions))
+        print(f"Querying GSC for Job Content URLs: {page_expressions}")
+
+        try:
+            response = service.searchanalytics().query(
+                siteUrl=token.site_url,
+                body={
+                    'startDate': start_date.strftime('%Y-%m-%d'),
+                    'endDate': end_date.strftime('%Y-%m-%d'),
+                    'dimensions': ['page'],
+                    'rowLimit': 10000,
+                    'dimensionFilterGroups': [{
+                        'filters': [{
+                            'dimension': 'page',
+                            'operator': 'equals',
+                            'expression': expr
+                        } for expr in page_expressions]
+                    }]
+                }
+            ).execute()
+
+            updated_records = []
+            if 'rows' in response:
+                for row in response.get('rows', []):
+                    page_url_from_gsc = row['keys'][0]
+                    clicks = row.get('clicks', 0)
+                    impressions = row.get('impressions', 0)
+                    ctr = row.get('ctr', 0)
+
+                    # Try to find a matching JobBlog
+                    for blog in job_blogs:
+                        if self._urls_match(blog.wp_post_url, page_url_from_gsc, domain):
+                            blog.clicks = clicks
+                            blog.impressions = impressions
+                            blog.ctr = ctr
+                            blog.last_metrics_update = timezone.now()
+                            blog.save()
+                            updated_records.append({'type': 'JobBlog', 'id': blog.id, 'title': blog.title, 'url': blog.wp_post_url})
+                            break
+                    else:
+                        # If no JobBlog was found, try to find a matching JobTask (Job Posting)
+                        for task in job_posting_tasks:
+                            if self._urls_match(task.wp_page_url, page_url_from_gsc, domain):
+                                task.clicks = clicks
+                                task.impressions = impressions
+                                task.ctr = ctr
+                                task.last_metrics_update = timezone.now()
+                                task.save()
+                                updated_records.append({'type': 'JobPosting', 'id': task.id, 'title': f"Job Post #{task.id}", 'url': task.wp_page_url})
+                                break
+
+            return Response({
+                'updated_count': len(updated_records),
+                'updated_records': updated_records,
+                'queried_expressions': page_expressions,
+                'found_rows': len(response.get('rows', []))
+            })
+
+        except Exception as e:
+            return Response({"error": f"Search Console API Error: {str(e)}"}, status=500)
+
+    def _urls_match(self, stored_url, gsc_url, domain):
+        parsed_stored = urlparse(stored_url)
+        parsed_gsc = urlparse(gsc_url)
+        # Simple matching: compare the path part of the URL
+        return parsed_stored.path == parsed_gsc.path
+    
+
+
+# # api/views.py
+# class JobContentMetricsView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def get(self, request):
+#         user = request.user
+#         try:
+#             token = SearchConsoleToken.objects.get(user=user)
+#         except SearchConsoleToken.DoesNotExist:
+#             return Response({"error": "Search Console not connected"}, status=400)
+
+#         # ... [Code to fetch job_blogs and job_posting_tasks] ...
+#         # 1. Get all Job Blogs with URLs
+#         job_blogs = JobBlog.objects.filter(
+#             job_task__user=user,
+#             wp_post_url__isnull=False
+#         ).exclude(wp_post_url='')
+#         # 2. Get all Job Posting TASKS with URLs
+#         job_posting_tasks = JobTask.objects.filter(
+#             user=user,
+#             task_type='job_template_generation', # Only get job posting tasks
+#             wp_page_url__isnull=False
+#         ).exclude(wp_page_url='')
+#         all_urls = [blog.wp_post_url for blog in job_blogs] + [task.wp_page_url for task in job_posting_tasks]
+
+#         if not all_urls:
+#             return Response({"message": "No published job blogs or postings found."}, status=200)
+
+#         service = build_service(token.credentials)
+#         end_date = timezone.now().date()
+#         start_date = end_date - timedelta(days=90)  # Increased to 90 days for testing
+
+#         # Build expressions based on property type
+#         page_expressions = []
+#         for url in all_urls:
+#             parsed = urlparse(url)
+#             # CRITICAL FIX: Use path for domain properties, full URL for URL-prefix properties
+#             if token.site_url.startswith('sc-domain:'):
+#                 expression = parsed.path  # e.g., '/local-owner-operator.../'
+#             else:
+#                 # For URL-prefix properties, use the full URL from the database
+#                 expression = url
+#             page_expressions.append(expression)
+
+#         page_expressions = list(set(page_expressions))
+#         print(f"Querying GSC for expressions: {page_expressions}")
+#         print(f"Using siteUrl: {token.site_url}")
+#         print(f"Date range: {start_date} to {end_date}")
+
+#         try:
+#             body = {
+#                 'startDate': start_date.strftime('%Y-%m-%d'),
+#                 'endDate': end_date.strftime('%Y-%m-%d'),
+#                 'dimensions': ['page'],
+#                 'rowLimit': 10000,
+#                 'dimensionFilterGroups': [{
+#                     'filters': [{
+#                         'dimension': 'page',
+#                         'operator': 'equals', # Start with 'equals', try 'contains' if this fails
+#                         'expression': expr
+#                     } for expr in page_expressions]
+#                 }]
+#             }
+#             print(f"Request Body: {body}") # Debug the final request
+
+#             response = service.searchanalytics().query(
+#                 siteUrl=token.site_url,
+#                 body=body
+#             ).execute()
+
+#             print(f"GSC API Response: {response}") # Log the full response
+
+#             updated_records = []
+#             found_rows = response.get('rows', [])
+#             if found_rows:
+#                 print(f"Found {len(found_rows)} rows of data.")
+#                 for row in found_rows:
+#                     page_url_from_gsc = row['keys'][0]
+#                     clicks = row.get('clicks', 0)
+#                     impressions = row.get('impressions', 0)
+#                     ctr = row.get('ctr', 0)
+#                     print(f"Processing GSC row: {page_url_from_gsc}, Clicks: {clicks}")
+
+#                     # ... [Your existing logic to update JobBlog and JobTask] ...
+#             else:
+#                 print("GSC returned no data (rows not found in response).")
+
+#             return Response({
+#                 'updated_count': len(updated_records),
+#                 'updated_records': updated_records,
+#                 'queried_expressions': page_expressions,
+#                 'found_rows': len(found_rows),
+#                 'debug': {
+#                     'siteUrl': token.site_url,
+#                     'date_range': f"{start_date} to {end_date}"
+#                 }
+#             })
+
+#         except HttpError as e:
+#             error_details = json.loads(e.content.decode())
+#             print(f"Google API Error: {error_details}")
+#             return Response({"error": "Google API Error", "details": error_details}, status=500)
+#         except Exception as e:
+#             print(f"Other Error: {str(e)}")
+#             return Response({"error": f"Search Console Sync Error: {str(e)}"}, status=500)
+
+
+
+# # api/views.py
+# class JobContentMetricsView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def get(self, request):
+#         user = request.user
+#         try:
+#             token = SearchConsoleToken.objects.get(user=user)
+#         except SearchConsoleToken.DoesNotExist:
+#             return Response({"error": "Search Console not connected"}, status=400)
+
+#         # ... [Code to fetch job_blogs and job_posting_tasks] ...
+#         #         # 1. Get all Job Blogs with URLs
+#         job_blogs = JobBlog.objects.filter(
+#             job_task__user=user,
+#             wp_post_url__isnull=False
+#         ).exclude(wp_post_url='')
+#         # 2. Get all Job Posting TASKS with URLs
+#         job_posting_tasks = JobTask.objects.filter(
+#             user=user,
+#             task_type='job_template_generation', # Only get job posting tasks
+#             wp_page_url__isnull=False
+#         ).exclude(wp_page_url='')
+#         all_urls = [blog.wp_post_url for blog in job_blogs] + [task.wp_page_url for task in job_posting_tasks]
+
+#         if not all_urls:
+#             return Response({"message": "No published job blogs or postings found."}, status=200)
+
+#         service = build_service(token.credentials)
+#         end_date = timezone.now().date()
+#         start_date = end_date - timedelta(days=90)
+
+#         # Build expressions based on property type
+#         page_expressions = []
+#         for url in all_urls:
+#             parsed = urlparse(url)
+#             if token.site_url.startswith('sc-domain:'):
+#                 expression = parsed.path
+#             else:
+#                 expression = url
+#             page_expressions.append(expression)
+
+#         page_expressions = list(set(page_expressions))
+#         print(f"Querying GSC for expressions: {page_expressions}")
+
+#         try:
+#             # Let's try a more flexible approach: check each URL one-by-one
+#             # and use 'contains' instead of 'equals' to catch variations
+#             all_rows = []
+#             for expr in page_expressions:
+#                 body = {
+#                     'startDate': start_date.strftime('%Y-%m-%d'),
+#                     'endDate': end_date.strftime('%Y-%m-%d'),
+#                     'dimensions': ['page'],
+#                 }
+#                 # Try a 'contains' filter for better matching
+#                 body['dimensionFilterGroups'] = [{
+#                     'filters': [{
+#                         'dimension': 'page',
+#                         'operator': 'contains', # CHANGED FROM 'equals' TO 'contains'
+#                         'expression': expr
+#                     }]
+#                 }]
+
+#                 print(f"Testing expression: {expr}")
+#                 response = service.searchanalytics().query(
+#                     siteUrl=token.site_url,
+#                     body=body
+#                 ).execute()
+#                 if 'rows' in response:
+#                     all_rows.extend(response['rows'])
+
+#             print(f"Total rows found across all queries: {len(all_rows)}")
+
+#             updated_records = []
+#             if all_rows:
+#                 for row in all_rows:
+#                     page_url_from_gsc = row['keys'][0]
+#                     clicks = row.get('clicks', 0)
+#                     impressions = row.get('impressions', 0)
+#                     ctr = row.get('ctr', 0)
+#                     print(f"Data found for: {page_url_from_gsc} (Clicks: {clicks}, Impressions: {impressions})")
+
+#                     # ... [Your existing logic to update JobBlog and JobTask] ...
+#                     # Try to find a matching JobBlog
+#                     for blog in job_blogs:
+#                         if self._urls_match(blog.wp_post_url, page_url_from_gsc, domain):
+#                             blog.clicks = clicks
+#                             blog.impressions = impressions
+#                             blog.ctr = ctr
+#                             blog.last_metrics_update = timezone.now()
+#                             blog.save()
+#                             updated_records.append({'type': 'JobBlog', 'id': blog.id, 'title': blog.title, 'url': blog.wp_post_url})
+#                             break
+#                     else:
+#                         # If no JobBlog was found, try to find a matching JobTask (Job Posting)
+#                         for task in job_posting_tasks:
+#                             if self._urls_match(task.wp_page_url, page_url_from_gsc, domain):
+#                                 task.clicks = clicks
+#                                 task.impressions = impressions
+#                                 task.ctr = ctr
+#                                 task.last_metrics_update = timezone.now()
+#                                 task.save()
+#                                 updated_records.append({'type': 'JobPosting', 'id': task.id, 'title': f"Job Post #{task.id}", 'url': task.wp_page_url})
+#                             break
+
+#             return Response({
+#                 'updated_count': len(updated_records),
+#                 'updated_records': updated_records,
+#                 'queried_expressions': page_expressions,
+#                 'found_rows': len(all_rows),
+#                 'debug': {
+#                     'siteUrl': token.site_url,
+#                     'date_range': f"{start_date} to {end_date}",
+#                     'message': 'No data found in GSC for the given paths. The pages may be new, not indexed, or have no impressions yet.'
+#                 }
+#             })
+
+#         except HttpError as e:
+#             error_details = json.loads(e.content.decode())
+#             print(f"Google API Error: {error_details}")
+#             return Response({"error": "Google API Error", "details": error_details}, status=500)
+#         except Exception as e:
+#             print(f"Other Error: {str(e)}")
+#             return Response({"error": f"Search Console Sync Error: {str(e)}"}, status=500)
+# api/views.py
+from django.db.models import Sum, Avg, Count, Q
+
+class JobPerformanceDashboardView(APIView):
+    """
+    API to get a summary of performance metrics for all job-related content.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # Get aggregates for Job Blogs
+        blog_metrics = JobBlog.objects.filter(
+            job_task__user=user
+        ).aggregate(
+            total_count=Count('id'),
+            total_clicks=Sum('clicks'),
+            total_impressions=Sum('impressions'),
+            avg_ctr=Avg('ctr')
+        )
+
+        # Get aggregates for Job Posting Tasks
+        posting_metrics = JobTask.objects.filter(
+            user=user,
+            task_type='job_template_generation'
+        ).aggregate(
+            total_count=Count('id'),
+            total_clicks=Sum('clicks'),
+            total_impressions=Sum('impressions'),
+            avg_ctr=Avg('ctr')
+        )
+
+        # Get top performing content
+        top_blogs = JobBlog.objects.filter(job_task__user=user).order_by('-clicks')[:5].values(
+            'id', 'title', 'clicks', 'impressions', 'ctr', 'wp_post_url'
+        )
+        top_postings = JobTask.objects.filter(
+            user=user, task_type='job_template_generation'
+        ).order_by('-clicks')[:5].values(
+            'id', 'wp_page_url', 'clicks', 'impressions', 'ctr'
+        )
+        # Add a title for postings
+        for post in top_postings:
+            post['title'] = f"Job Post #{post['id']}"
+
+        response_data = {
+            "summary": {
+                "job_blogs": blog_metrics,
+                "job_postings": posting_metrics,
+            },
+            "top_performing": {
+                "blogs": top_blogs,
+                "postings": top_postings,
+            }
+        }
+
+        return Response(response_data)
