@@ -248,6 +248,9 @@ print(settings.CORS_ALLOW_METHODS)
 # Celery
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+# CELERY_BROKER_URL = 'redis://:your_strong_password@127.0.0.1:6379/0'
+# CELERY_RESULT_BACKEND = 'redis://:your_strong_password@127.0.0.1:6379/0'
+
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Karachi'
@@ -333,7 +336,7 @@ SOCIALACCOUNT_PROVIDERS = {
 
 GOOGLE_SEARCH_REDIRECT_URI = "https://c6fcf64ed064.ngrok-free.app/search-console/test-search-callback/"
 
-GOOGLE_ANALYTICS_REDIRECT_URI = "https://c6fcf64ed064.ngrok-free.app/google_analytics/test-ga-callback/"
+GOOGLE_ANALYTICS_REDIRECT_URI = "https://600779d55b88.ngrok-free.app/analytic-auth"
 
 GOOGLE_BUSINESS_REDIRECT_URI = "http://127.0.0.1:8000/google-business/profile/auth/callback/"
 GOOGLE_BUSINESS_USE_MOCK = DEBUG
