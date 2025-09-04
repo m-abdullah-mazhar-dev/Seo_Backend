@@ -5,7 +5,7 @@ from rest_framework import status
 from g_matrix.google_service import build_service
 from g_matrix.models import GoogleAnalyticsToken, SearchConsoleToken
 from job.models import *
-from job.utility import create_initial_job_blog_task, generate_structured_job_html, upload_job_post_to_wordpress
+from job.utility import create_initial_job_blog_task, generate_structured_job_html, map_cost_structure, upload_job_post_to_wordpress
 from seo_services.models import WordPressConnection
 from seo_services.upload_blog_to_wp import upload_blog_to_wordpress
 from .serializers import JobBlogSerializer, JobOnboardingFormSerializer, JobTaskSerializer
@@ -1138,6 +1138,8 @@ def map_job_form_to_api_payload(job_form):
             hiring_area["type"] = "otr"
             # OTR case: full USA map, koi extra filter nahi
             hiring_area["regions"] = ["USA"]
+
+    
     
     # Construct the API payload
     payload = {
@@ -1161,7 +1163,8 @@ def map_job_form_to_api_payload(job_form):
         "extra": extra,
         "hiring_area": hiring_area
     }
-    
+  
+
     return payload
 
 def run_job_template_generation(task):
@@ -1237,6 +1240,12 @@ def run_job_template_generation(task):
 
         logger.info(f"✅ Job Template generated successfully")
 
+                # Add cost structure to the AI response if applicable
+        if job_onboarding.position and job_onboarding.position.lower() in ["owner operator", "lease-to-rent", "lease-to-purchase"]:
+            cost_structure = map_cost_structure(job_onboarding)
+            data["cost_structure"] = cost_structure
+            logger.info(f"✅ Added cost structure to response: {cost_structure}")
+
         # Save the template (you might want to create a new model for this)
         # For now, we'll update the task with the response
         task.ai_request_payload = api_payload
@@ -1253,7 +1262,7 @@ def run_job_template_generation(task):
         if hasattr(user, 'wordpress_connection'):
             # Convert the template text to HTML
             html_content = f"<div>{job_template.replace('**', '<strong>').replace('*', '<li>').replace('\n', '<br>')}</div>"
-            upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content,api_payload=api_payload, job_task=task)
+            upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content,api_payload=data, job_task=task)
 
         # Auto-create next task if limit not reached - same logic as before
         if task.count_this_month < package_limit:

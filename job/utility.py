@@ -86,7 +86,62 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload, jo
         html_content = html_content.replace('States:', '')  # Remove just the States label
 
         
+        # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
+     # ADD COST STRUCTURE TO HTML CONTENT AFTER DRIVER BENEFITS SECTION
+    cost_structure = api_payload.get("cost_structure")
+    if cost_structure:
+        cost_html = f"""
+        <h2>{cost_structure['title']}</h2>
+        """
         
+        # Add service fee info
+        if cost_structure.get("service_fee"):
+            cost_html += f"<p><strong>{cost_structure['service_fee']} COMPANY SERVICE FEE INCLUDES:</strong></p>"
+            if cost_structure.get("service_fee_includes"):
+                cost_html += "<ul>"
+                for item in cost_structure["service_fee_includes"]:
+                    cost_html += f"<li>{item}</li>"
+                cost_html += "</ul>"
+        
+        # Add weekly expenses
+        if cost_structure.get("weekly_expenses"):
+            cost_html += "<p><strong>WEEKLY EXPENSES:</strong></p><ul>"
+            for expense in cost_structure["weekly_expenses"]:
+                cost_html += f"<li>{expense}</li>"
+            cost_html += "</ul>"
+        
+        # Insert cost structure after DRIVER BENEFITS section
+        # Look for the DRIVER BENEFITS section in the HTML
+        benefits_pattern = "DRIVER BENEFITS:"
+        benefits_index = html_content.find(benefits_pattern)
+        
+        if benefits_index != -1:
+            # Find the end of the DRIVER BENEFITS section
+            # Look for the next section header (all caps followed by colon)
+            import re
+            next_section_match = re.search(r'<br>[A-Z\s]+:', html_content[benefits_index:])
+            
+            if next_section_match:
+                # Insert after DRIVER BENEFITS section but before next section
+                insert_index = benefits_index + next_section_match.start()
+                html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+            else:
+                # If no next section found, insert at the end of DRIVER BENEFITS
+                # Find the end of the list items
+                ul_end_pattern = "</ul>"
+                ul_end_index = html_content.find(ul_end_pattern, benefits_index)
+                
+                if ul_end_index != -1:
+                    # Insert after the closing </ul> of benefits
+                    insert_index = ul_end_index + len(ul_end_pattern)
+                    html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+                else:
+                    # Fallback: insert after DRIVER BENEFITS text
+                    insert_index = benefits_index + len(benefits_pattern)
+                    html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+        else:
+            # Fallback: append to end if DRIVER BENEFITS section not found
+            html_content += cost_html
 
     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
 
@@ -315,3 +370,102 @@ def create_initial_job_blog_task(user, job_onboarding):
     
     logger.info(f"✅ Initial job blog task created for user {user.email}")
     return task
+
+
+
+def map_cost_structure(job_form):
+    """Map cost breakdown based on driving position"""
+    position = (job_form.position or "").lower().strip()
+
+    cost_section = {
+        "title": "",
+        "service_fee": None,
+        "service_fee_includes": job_form.service_fee_includes or [],
+        "weekly_expenses": []
+    }
+
+    # --- Owner Operator ---
+    if position == "owner operator":
+        cost_section["title"] = "Owner-Operator Cost Breakdown"
+        cost_section["service_fee"] = f"{job_form.company_service_fee}%"
+
+        if job_form.trailer_rent:
+            cost_section["weekly_expenses"].append(f"TRAILER RENT – ${job_form.trailer_rent}/WEEK")
+
+        if job_form.insurance_physical_damage:
+            cost_section["weekly_expenses"].append(f"PHYSICAL DAMAGE INSURANCE – ${job_form.insurance_physical_damage}/WEEK")
+
+        if job_form.insurance_liability_cargo:
+            cost_section["weekly_expenses"].append(f"LIABILITY & CARGO INSURANCE – ${job_form.insurance_liability_cargo}/WEEK")
+
+        if job_form.ifta_fee:
+            cost_section["weekly_expenses"].append(f"IFTA – ${job_form.ifta_fee}/WEEK")
+
+        if job_form.tablet_cost:
+            if job_form.tablet_cost.lower() == "driver":
+                cost_section["weekly_expenses"].append("TABLET & DATA – DRIVER PROVIDED")
+            else:
+                cost_section["weekly_expenses"].append(f"TABLET & DATA – ${job_form.tablet_cost}/WEEK")
+
+        cost_section["weekly_expenses"].append("TOLLS & FUEL")
+
+    # --- Lease-to-Rent ---
+    elif position == "lease-to-rent":
+        cost_section["title"] = "Lease-To-Rent Cost Breakdown"
+        cost_section["service_fee"] = "$500 FIXED"
+
+        if job_form.truck_lease_weekly:
+            cost_section["weekly_expenses"].append(f"TRUCK LEASE – ${job_form.truck_lease_weekly}/WEEK")
+
+        if job_form.trailer_rent:
+            cost_section["weekly_expenses"].append(f"TRAILER RENT – ${job_form.trailer_rent}/WEEK")
+
+        if job_form.insurance_physical_damage:
+            cost_section["weekly_expenses"].append(f"PHYSICAL DAMAGE INSURANCE – ${job_form.insurance_physical_damage}/WEEK")
+
+        if job_form.insurance_liability_cargo:
+            cost_section["weekly_expenses"].append(f"LIABILITY & CARGO INSURANCE – ${job_form.insurance_liability_cargo}/WEEK")
+
+        if job_form.ifta_fee:
+            cost_section["weekly_expenses"].append(f"IFTA – ${job_form.ifta_fee}/WEEK")
+
+        if job_form.tablet_cost:
+            if job_form.tablet_cost.lower() == "driver":
+                cost_section["weekly_expenses"].append("TABLET & DATA – DRIVER PROVIDED")
+            else:
+                cost_section["weekly_expenses"].append(f"TABLET & DATA – ${job_form.tablet_cost}/WEEK")
+
+        cost_section["weekly_expenses"].append("TOLLS & FUEL")
+
+    # --- Lease-to-Purchase ---
+    elif position == "lease-to-purchase":
+        cost_section["title"] = "Lease-To-Purchase Cost Breakdown"
+        cost_section["service_fee"] = "$500 FIXED"
+
+        if job_form.truck_lease_weekly:
+            cost_section["weekly_expenses"].append(f"TRUCK LEASE – ${job_form.truck_lease_weekly}/WEEK")
+
+        if job_form.trailer_rent:
+            cost_section["weekly_expenses"].append(f"TRAILER RENT – ${job_form.trailer_rent}/WEEK")
+
+        if job_form.insurance_physical_damage:
+            cost_section["weekly_expenses"].append(f"PHYSICAL DAMAGE INSURANCE – ${job_form.insurance_physical_damage}/WEEK")
+
+        if job_form.insurance_liability_cargo:
+            cost_section["weekly_expenses"].append(f"LIABILITY & CARGO INSURANCE – ${job_form.insurance_liability_cargo}/WEEK")
+
+        if job_form.ifta_fee:
+            cost_section["weekly_expenses"].append(f"IFTA – ${job_form.ifta_fee}/WEEK")
+
+        if job_form.tablet_cost:
+            if job_form.tablet_cost.lower() == "driver":
+                cost_section["weekly_expenses"].append("TABLET & DATA – DRIVER PROVIDED")
+            else:
+                cost_section["weekly_expenses"].append(f"TABLET & DATA – ${job_form.tablet_cost}/WEEK")
+
+        if job_form.down_payment:
+            cost_section["weekly_expenses"].append(f"DOWN PAYMENT – ${job_form.down_payment}")
+
+        cost_section["weekly_expenses"].append("TOLLS & FUEL")
+
+    return cost_section
