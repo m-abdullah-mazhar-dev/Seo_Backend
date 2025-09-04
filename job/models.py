@@ -137,6 +137,41 @@ class JobOnboardingForm(models.Model):
 
     earning_type = models.CharField(max_length=50, null=True, blank= True)
 
+        # -------------------- Cost Structure --------------------
+    company_service_fee = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Percent for Owner Operator only"
+    )
+    service_fee_includes = models.JSONField(default=list, null=True, blank=True)
+
+    trailer_rent = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True
+    )
+
+    insurance_physical_damage = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True
+    )
+    insurance_liability_cargo = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True
+    )
+    ifta_fee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True
+    )
+
+    tablet_cost = models.CharField(
+        max_length=50, null=True, blank=True,
+        help_text="Either number or 'driver'"
+    )
+
+    # Lease-specific
+    truck_lease_weekly = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True
+    )
+    down_payment = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+
+
     def __str__(self):
         return self.company_name
     
