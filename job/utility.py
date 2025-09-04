@@ -43,6 +43,7 @@ def get_or_create_category(wp_conn, slug, name=None, description=""):
     else:
         raise Exception(f"❌ Failed to create '{slug}' category: {response.text}")
 
+import re
 
 def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload, job_task ):
     wp_conn = wp_conn
@@ -71,6 +72,21 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload, jo
     # title = f"{job_form.company_name} - Hiring CDL Drivers"
     title = f"{route.upper()} {position} – {equipment} – {pay_structure} – {pay_value}"
     map_html = generate_map_html(api_payload)
+
+        # POST-PROCESSING: Clean up the HTML content for local routes
+    hiring_area = api_payload.get("hiring_area", {})
+    route_type = hiring_area.get("type", "").lower()
+
+    if route_type == "local":
+        # Simple string replacement for the exact pattern
+        html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
+
+    elif route_type == "otr":
+    # For OTR routes, remove only the empty "States:" line but keep "HIRING FROM: + Regions: USA"
+        html_content = html_content.replace('States:', '')  # Remove just the States label
+
+        
+        
 
     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
 
@@ -122,14 +138,16 @@ def generate_map_html(api_payload):
     route = api_payload.get("route", "").lower()
     hiring_area = api_payload.get("hiring_area", {})
     states = hiring_area.get("states", [])
-    radius = api_payload.get("radius")
+    radius = hiring_area.get("radius")
+    route_type = hiring_area.get("type", "").lower()
 
+    effective_route = route_type if route_type else route
     # Local → no map, just radius text
-    if route == "local" and radius:
+    if effective_route  == "local" and radius:
         return f"<p><strong>Hiring Radius:</strong> Within {radius} miles</p>"
 
     # Regional → highlight specific states
-    if route == "regional" and states:
+    if effective_route  == "regional" and states:
         states_js = ",".join([f'"{s}"' for s in states])
         return f"""
         <div id="regional-map" style="width: 100%; height: 500px;"></div>
@@ -154,7 +172,7 @@ def generate_map_html(api_payload):
         """
 
     # OTR → full USA map
-    if route == "otr":
+    if effective_route  == "otr":
         return """
         <div id="otr-map" style="width: 100%; height: 500px;"></div>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>

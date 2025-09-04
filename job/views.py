@@ -1297,16 +1297,16 @@ def create_initial_job_tasks(user, job_onboarding):
     current_month = timezone.now().strftime("%Y-%m")
     
     # Create blog task
-    blog_task = JobTask.objects.create(
-        user=user,
-        job_onboarding=job_onboarding,
-        task_type='job_blog_writing',
-        next_run=timezone.now(),
-        status='pending',
-        count_this_month=0,
-        month_year=current_month,
-        is_active=True
-    )
+    # blog_task = JobTask.objects.create(
+    #     user=user,
+    #     job_onboarding=job_onboarding,
+    #     task_type='job_blog_writing',
+    #     next_run=timezone.now(),
+    #     status='pending',
+    #     count_this_month=0,
+    #     month_year=current_month,
+    #     is_active=True
+    # )
     
     # Create template task
     template_task = JobTask.objects.create(
@@ -1321,8 +1321,8 @@ def create_initial_job_tasks(user, job_onboarding):
     )
     
     logger.info(f"✅ Initial job tasks created for user {user.email}")
-    return blog_task , template_task
-    # return  template_task
+    # return blog_task , template_task
+    return  template_task
 
 
 # -------------------
