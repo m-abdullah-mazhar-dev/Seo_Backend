@@ -377,6 +377,7 @@ class ClientFeedback(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     crm_connection = models.ForeignKey(CRMConnection, on_delete=models.SET_NULL, null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True) 
 
 
 

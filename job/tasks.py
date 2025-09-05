@@ -9,10 +9,16 @@ import json
 from datetime import datetime
 import uuid
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 @shared_task
 def check_zoho_closed_jobs():
+    
     """Celery task to check Zoho CRM for closed jobs and send to n8n"""
     # Get all active Zoho connections
+    logger.info(f"🔄SEO tasks started.")
     zoho_connections = CRMConnection.objects.filter(
         crm_type__provider='zoho',
         is_connected=True
@@ -58,37 +64,55 @@ def process_zoho_connection(connection):
     
     return {"success": True, "processed_count": processed_count, "total_count": len(closed_deals)}
 
+# crm/tasks.py
+# crm/tasks.py
 def process_closed_deal(deal, connection):
     """Process a single closed deal, create feedback record, and send to n8n"""
     # Extract deal data
     deal_id = deal.get('id')
-    email = get_crm_service(connection).extract_email_from_deal(deal)
+    print(f"\n=== Processing deal {deal_id} ===")
+    
+    # Get CRM service and extract email with debugging
+    crm_service = get_crm_service(connection)
+    email = crm_service.extract_email_from_deal(deal)
+    
+    print(f"Extracted email: {email}")
     
     if not email or '@' not in email:
         print(f"Skipping deal {deal_id}: No valid email found")
         return False
     
-    # Create feedback record first (this generates the token)
+    # Get contact name from deal
+    contact_name = ''
+    contact_info = deal.get('Contact_Name', {})
+    if isinstance(contact_info, dict):
+        contact_name = contact_info.get('name', '')
+    
+    print(f"Creating feedback record for email: {email}")
+    
+    # Create feedback record - FIXED: use correct field names
     feedback = ClientFeedback.objects.create(
         email=email,
-        service_area=deal.get('Service_Area', ''),
         job_id=deal_id,
+        service_area=deal.get('Service_Area', ''),
         user=connection.user,
         crm_connection=connection,
-        metadata={
+        metadata={  # This should work now after adding the field
             'deal_name': deal.get('Deal_Name', 'Unknown Deal'),
             'amount': deal.get('Amount', ''),
             'close_date': deal.get('Closing_Date', ''),
-            'contact_name': deal.get('Contact_Name', {}).get('name', '') if isinstance(deal.get('Contact_Name'), dict) else '',
+            'contact_name': contact_name,
             'description': deal.get('Description', ''),
             'last_activity_time': deal.get('Last_Activity_Time', '')
         }
     )
     
-    # Generate feedback URLs (same as your existing flow)
+    # Generate feedback URLs
     base_url = settings.FRONTEND_URL.rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+    
+    print(f"Generated feedback URLs - Yes: {yes_url}, No: {no_url}")
     
     # Prepare data for n8n
     deal_data = {
@@ -96,7 +120,7 @@ def process_closed_deal(deal, connection):
         'name': deal.get('Deal_Name', 'Unknown Deal'),
         'amount': deal.get('Amount', ''),
         'close_date': deal.get('Closing_Date', ''),
-        'contact_name': deal.get('Contact_Name', {}).get('name', '') if isinstance(deal.get('Contact_Name'), dict) else '',
+        'contact_name': contact_name,
         'email': email,
         'service_area': deal.get('Service_Area', ''),
         'description': deal.get('Description', ''),
@@ -116,7 +140,7 @@ def process_closed_deal(deal, connection):
 def send_to_n8n(deal_data):
     """Send deal data to n8n's webhook for email sending"""
     # This should be your n8n webhook URL
-    n8n_webhook_url = "https://your-n8n-instance.com/webhook/zoho-closed-deals"
+    n8n_webhook_url = "https://abd-dev.app.n8n.cloud/webhook-test/webhook/zoho-closed-deals"
     
     payload = {
         'email': deal_data['email'],

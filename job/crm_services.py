@@ -515,7 +515,7 @@ class ZohoCRMService(CRMServiceBase):
             return f"Zoho Error: HTTP {response.status_code}"
     
     def get_closed_deals(self, last_check_time=None):
-        """Fetch closed deals from Zoho CRM with proper filtering"""
+        """Fetch closed deals from Zoho CRM with proper filtering and debugging"""
         if not self.ensure_valid_token():
             return {"success": False, "error": "Invalid or expired token"}
         
@@ -531,19 +531,17 @@ class ZohoCRMService(CRMServiceBase):
         
         # Add time filter if provided
         if last_check_time:
-            # Convert to Zoho format (YYYY-MM-DDTHH:MM:SS+05:30)
             last_check_str = last_check_time.strftime("%Y-%m-%dT%H:%M:%S%z")
-            # Format timezone offset properly (e.g., +0530 -> +05:30)
             if len(last_check_str) == 25 and last_check_str[-2] == '0':
                 last_check_str = last_check_str[:-2] + ':' + last_check_str[-2:]
             criteria = f"({criteria} and Last_Activity_Time:greater_than:{last_check_str})"
         
         params = {
             "criteria": criteria,
-            "fields": "id,Deal_Name,Amount,Closing_Date,Contact_Name,Email,Description,Service_Area,Last_Activity_Time",
+            "fields": "id,Deal_Name,Amount,Closing_Date,Contact_Name,Description,Service_Area,Last_Activity_Time",
             "sort_by": "Last_Activity_Time",
-            "sort_order": "asc",  # Get oldest first to process in order
-            "per_page": 200  # Maximum allowed by Zoho
+            "sort_order": "asc",
+            "per_page": 200
         }
         
         try:
@@ -554,6 +552,31 @@ class ZohoCRMService(CRMServiceBase):
                 data = response.json()
                 deals = data.get('data', [])
                 print(f"Found {len(deals)} closed deals")
+                
+                # DEBUG: Print detailed information about each deal
+                for i, deal in enumerate(deals):
+                    print(f"\n=== Deal {i+1} ===")
+                    print(f"ID: {deal.get('id')}")
+                    print(f"Name: {deal.get('Deal_Name')}")
+                    print(f"Stage: {deal.get('Stage')}")
+                    print(f"Contact_Name: {deal.get('Contact_Name')}")
+                    print(f"Contact_Name type: {type(deal.get('Contact_Name'))}")
+                    
+                    # Debug contact information in detail
+                    contact_info = deal.get('Contact_Name')
+                    if contact_info:
+                        if isinstance(contact_info, dict):
+                            print(f"Contact ID: {contact_info.get('id')}")
+                            print(f"Contact Name: {contact_info.get('name')}")
+                            
+                            # Try to fetch contact details if we have an ID
+                            if contact_info.get('id'):
+                                self.debug_contact_details(contact_info['id'], headers)
+                        else:
+                            print(f"Contact info is not a dictionary: {contact_info}")
+                    
+                    print("All deal fields:", list(deal.keys()))
+                
                 return {"success": True, "data": deals}
             else:
                 error_msg = self.handle_zoho_error(response)
@@ -561,23 +584,78 @@ class ZohoCRMService(CRMServiceBase):
         except requests.RequestException as e:
             return {"success": False, "error": f"Request failed: {str(e)}"}
     
+    def debug_contact_details(self, contact_id, headers):
+        """Fetch and debug contact details"""
+        try:
+            contact_url = f"{self.get_api_base_url()}/crm/v2/Contacts/{contact_id}"
+            response = requests.get(contact_url, headers=headers)
+            
+            if response.status_code == 200:
+                contact_data = response.json()
+                contact = contact_data.get('data', [{}])[0]
+                print(f"=== Contact Details for ID {contact_id} ===")
+                print(f"Email: {contact.get('Email')}")
+                print(f"First Name: {contact.get('First_Name')}")
+                print(f"Last Name: {contact.get('Last_Name')}")
+                print(f"Full Name: {contact.get('Full_Name')}")
+                print("All contact fields:", list(contact.keys()))
+            else:
+                print(f"Failed to fetch contact {contact_id}: {response.status_code}")
+        except Exception as e:
+            print(f"Error fetching contact details: {str(e)}")
+    
     def extract_email_from_deal(self, deal):
-        """Extract email from deal data in various possible fields"""
-        # Try different possible email fields
-        email_fields = ['Email', 'Contact_Email', 'email', 'contact_email']
+        """Extract email from deal data with detailed debugging"""
+        print(f"\n=== Extracting email from deal {deal.get('id')} ===")
         
-        for field in email_fields:
-            email_value = deal.get(field)
-            if email_value:
-                if isinstance(email_value, dict):
-                    # Handle case where email is in format {"email": "test@example.com"}
-                    return email_value.get('email', '')
-                elif isinstance(email_value, str) and '@' in email_value:
-                    return email_value
+        # Check Contact_Name field first
+        contact_info = deal.get('Contact_Name')
+        print(f"Contact_Name field: {contact_info}")
         
-        # If no email found, check Contact_Name field which might contain email
-        contact_name = deal.get('Contact_Name', {})
-        if isinstance(contact_name, dict):
-            return contact_name.get('email', '')
+        if contact_info and isinstance(contact_info, dict):
+            contact_id = contact_info.get('id')
+            if contact_id:
+                print(f"Found contact ID: {contact_id}")
+                # Fetch contact email
+                email = self.get_contact_email(contact_id)
+                if email and self.is_valid_email(email):  # Add validation check
+                    print(f"Found valid email from contact: {email}")
+                    return email
+                else:
+                    print(f"Invalid email found: {email}")
+        
+        print("No valid email found")
+        return ''
+
+    def is_valid_email(self, email):
+        """Check if email is valid (not a placeholder)"""
+        if not email or '@' not in email:
+            return False
+        
+        # Filter out common placeholder emails
+        invalid_domains = ['noemail.invalid', 'example.com', 'test.com', 'placeholder.com']
+        for domain in invalid_domains:
+            if domain in email:
+                return False
+        
+        return True
+    
+    def get_contact_email(self, contact_id):
+        """Get email from contact by ID"""
+        headers = {
+            "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            contact_url = f"{self.get_api_base_url()}/crm/v2/Contacts/{contact_id}"
+            response = requests.get(contact_url, headers=headers)
+            
+            if response.status_code == 200:
+                contact_data = response.json()
+                contact = contact_data.get('data', [{}])[0]
+                return contact.get('Email', '')
+        except Exception as e:
+            print(f"Error fetching contact email: {str(e)}")
         
         return ''
