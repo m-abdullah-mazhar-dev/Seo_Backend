@@ -301,7 +301,8 @@ class OAuthInitAPIView(APIView):
         serializer = OAuthInitSerializer(data=request.data)
         if serializer.is_valid():
             crm_type = get_object_or_404(CRMType, id=serializer.validated_data['crm_type_id'])
-            redirect_uri = serializer.validated_data['redirect_uri'] # just neede to be picked from setting
+            # redirect_uri = serializer.validated_data['redirect_uri'] # just neede to be picked from setting
+            redirect_uri = settings.HUBSPOT_REDIRECT_URI # just neede to be picked from setting
             
             if crm_type.auth_type not in ['oauth', 'both']:
                 return Response(
