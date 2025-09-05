@@ -513,3 +513,71 @@ class ZohoCRMService(CRMServiceBase):
                 return f"Zoho Error: {response.text}"
         except:
             return f"Zoho Error: HTTP {response.status_code}"
+    
+    def get_closed_deals(self, last_check_time=None):
+        """Fetch closed deals from Zoho CRM with proper filtering"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.get_api_base_url()}/crm/v2/Deals"
+        
+        headers = {
+            "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Build query criteria for closed won deals
+        criteria = "(Stage:equals:Closed Won)"
+        
+        # Add time filter if provided
+        if last_check_time:
+            # Convert to Zoho format (YYYY-MM-DDTHH:MM:SS+05:30)
+            last_check_str = last_check_time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            # Format timezone offset properly (e.g., +0530 -> +05:30)
+            if len(last_check_str) == 25 and last_check_str[-2] == '0':
+                last_check_str = last_check_str[:-2] + ':' + last_check_str[-2:]
+            criteria = f"({criteria} and Last_Activity_Time:greater_than:{last_check_str})"
+        
+        params = {
+            "criteria": criteria,
+            "fields": "id,Deal_Name,Amount,Closing_Date,Contact_Name,Email,Description,Service_Area,Last_Activity_Time",
+            "sort_by": "Last_Activity_Time",
+            "sort_order": "asc",  # Get oldest first to process in order
+            "per_page": 200  # Maximum allowed by Zoho
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            print(f"Zoho get closed deals response: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                deals = data.get('data', [])
+                print(f"Found {len(deals)} closed deals")
+                return {"success": True, "data": deals}
+            else:
+                error_msg = self.handle_zoho_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def extract_email_from_deal(self, deal):
+        """Extract email from deal data in various possible fields"""
+        # Try different possible email fields
+        email_fields = ['Email', 'Contact_Email', 'email', 'contact_email']
+        
+        for field in email_fields:
+            email_value = deal.get(field)
+            if email_value:
+                if isinstance(email_value, dict):
+                    # Handle case where email is in format {"email": "test@example.com"}
+                    return email_value.get('email', '')
+                elif isinstance(email_value, str) and '@' in email_value:
+                    return email_value
+        
+        # If no email found, check Contact_Name field which might contain email
+        contact_name = deal.get('Contact_Name', {})
+        if isinstance(contact_name, dict):
+            return contact_name.get('email', '')
+        
+        return ''

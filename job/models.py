@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django.db import models
 from django.contrib.auth import get_user_model
 import uuid
@@ -377,3 +378,15 @@ class ClientFeedback(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     crm_connection = models.ForeignKey(CRMConnection, on_delete=models.SET_NULL, null=True, blank=True)
 
+
+
+# models.py
+class OAuthState(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    state = models.CharField(max_length=100, unique=True)
+    crm_type_id = models.IntegerField()
+    redirect_uri = models.URLField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def is_expired(self):
+        return timezone.now() > self.created_at + timedelta(minutes=10)
