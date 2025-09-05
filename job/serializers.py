@@ -46,7 +46,7 @@ class CRMConnectionSerializer(serializers.ModelSerializer):
 
 class OAuthInitSerializer(serializers.Serializer):
     crm_type_id = serializers.IntegerField()
-    redirect_uri = serializers.URLField()
+    # redirect_uri = serializers.URLField()
 
 class OAuthCallbackSerializer(serializers.Serializer):
     code = serializers.CharField()

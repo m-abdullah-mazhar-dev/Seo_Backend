@@ -303,6 +303,7 @@ class OAuthInitAPIView(APIView):
             crm_type = get_object_or_404(CRMType, id=serializer.validated_data['crm_type_id'])
             # redirect_uri = serializer.validated_data['redirect_uri'] # just neede to be picked from setting
             redirect_uri = settings.HUBSPOT_REDIRECT_URI # just neede to be picked from setting
+            print(redirect_uri)
             
             if crm_type.auth_type not in ['oauth', 'both']:
                 return Response(
@@ -315,6 +316,18 @@ class OAuthInitAPIView(APIView):
             request.session['oauth_state'] = state
             request.session['oauth_crm_type'] = crm_type.id
             request.session['oauth_redirect_uri'] = redirect_uri
+
+            request.session.save()
+
+            print(state)
+
+                        # Also store in database as backup
+            OAuthState.objects.create(
+                user=request.user,
+                state=state,
+                crm_type_id=crm_type.id,
+                redirect_uri=redirect_uri
+            )
             
             # Build the authorization URL
             auth_url = self.build_authorization_url(crm_type, redirect_uri, state)
@@ -373,20 +386,38 @@ class OAuthCallbackAPIView(APIView):
             
             # Verify state parameter
             if state != request.session.get('oauth_state'):
-                return Response(
-                    {"error": "Invalid state parameter"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            crm_type_id = request.session.get('oauth_crm_type')
-            redirect_uri = request.session.get('oauth_redirect_uri')
-            
+                try:
+                    oauth_state = OAuthState.objects.get(state=state, user=request.user)
+                    if not oauth_state.is_expired():
+                        # Use database values as backup
+                        crm_type_id = oauth_state.crm_type_id
+                        redirect_uri = oauth_state.redirect_uri
+                        # Clean up the used state
+                        oauth_state.delete()
+                    else:
+                        return Response(
+                            {"error": "Expired state parameter"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                except OAuthState.DoesNotExist:
+                    return Response(
+                        {"error": "Invalid state parameter"},
+                        status=status.HTTP_400_BAD_REQUEST)
+            else:
+                crm_type_id = request.session.get('oauth_crm_type')
+                redirect_uri = request.session.get('oauth_redirect_uri')
+
+                            # Clear session data
+                for key in ['oauth_state', 'oauth_crm_type', 'oauth_redirect_uri']:
+                    if key in request.session:
+                        del request.session[key]
+                
             if not all([crm_type_id, redirect_uri]):
                 return Response(
                     {"error": "OAuth session data missing"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+                
             crm_type = get_object_or_404(CRMType, id=crm_type_id)
             
             # Exchange code for access token
