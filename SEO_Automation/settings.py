@@ -238,18 +238,18 @@ STRIPE_SECRET_KEY = 'sk_test_51QOxwTA8cYNy6kmAPgM0WRmFIuGimW53AFkWP0EsDhQh8hJguP
 STRIPE_PUBLIC_KEY = 'pk_test_...'  # Optional for frontend
 STRIPE_WEBHOOK_SECRET = 'whsec_e7c846c5dab294c1efb3d832ee1c8550dd13c23782ca25c701d5498c9bd31051'
 ALLOWED_HOSTS = ['*']
-# AI_API_DOMAIN = "http://51.21.149.16:5000"
-AI_API_DOMAIN = "http://127.0.0.1:5000"
+AI_API_DOMAIN = "http://51.21.149.16:5000"
+# AI_API_DOMAIN = "http://127.0.0.1:5000"
 
 
 
 from django.conf import settings
 print(settings.CORS_ALLOW_METHODS)
 # Celery
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-# CELERY_BROKER_URL = 'redis://:your_strong_password@127.0.0.1:6379/0'
-# CELERY_RESULT_BACKEND = 'redis://:your_strong_password@127.0.0.1:6379/0'
+# CELERY_BROKER_URL = 'redis://localhost:6379/0'
+# CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = 'redis://:your_strong_password@127.0.0.1:6379/0'
+CELERY_RESULT_BACKEND = 'redis://:your_strong_password@127.0.0.1:6379/0'
 
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
