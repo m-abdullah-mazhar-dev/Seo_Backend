@@ -148,6 +148,8 @@ class JobOnboardingForm(models.Model):
         max_digits=8, decimal_places=2, null=True, blank=True
     )
 
+    rent_trailers_to_drivers = models.BooleanField(null=True, blank=True)
+
     insurance_physical_damage = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True
     )
@@ -162,6 +164,7 @@ class JobOnboardingForm(models.Model):
         max_length=50, null=True, blank=True,
         help_text="Either number or 'driver'"
     )
+    driver_provided_tablet = models.BooleanField(default=False)
 
     # Lease-specific
     truck_lease_weekly = models.DecimalField(
@@ -171,6 +174,7 @@ class JobOnboardingForm(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True
     )
 
+    tolls_fuel = models.CharField(max_length=50,null=True, blank=True)
 
     def __str__(self):
         return self.company_name

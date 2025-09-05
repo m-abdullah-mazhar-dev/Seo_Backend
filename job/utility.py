@@ -407,7 +407,11 @@ def map_cost_structure(job_form):
             else:
                 cost_section["weekly_expenses"].append(f"TABLET & DATA – ${job_form.tablet_cost}/WEEK")
 
-        cost_section["weekly_expenses"].append("TOLLS & FUEL")
+        if job_form.tolls_fuel:
+            cost_section["weekly_expenses"].append(f"{job_form.tolls_fuel}")
+        else:
+            cost_section["weekly_expenses"].append("TOLLS & FUEL")
+
 
     # --- Lease-to-Rent ---
     elif position == "lease-to-rent":
@@ -435,7 +439,11 @@ def map_cost_structure(job_form):
             else:
                 cost_section["weekly_expenses"].append(f"TABLET & DATA – ${job_form.tablet_cost}/WEEK")
 
-        cost_section["weekly_expenses"].append("TOLLS & FUEL")
+        if job_form.tolls_fuel:
+            cost_section["weekly_expenses"].append(f"{job_form.tolls_fuel}")
+        else:
+            cost_section["weekly_expenses"].append("TOLLS & FUEL")
+
 
     # --- Lease-to-Purchase ---
     elif position == "lease-to-purchase":
@@ -465,7 +473,9 @@ def map_cost_structure(job_form):
 
         if job_form.down_payment:
             cost_section["weekly_expenses"].append(f"DOWN PAYMENT – ${job_form.down_payment}")
-
-        cost_section["weekly_expenses"].append("TOLLS & FUEL")
+        if job_form.tolls_fuel:
+            cost_section["weekly_expenses"].append(f"{job_form.tolls_fuel}")
+        else:
+            cost_section["weekly_expenses"].append("TOLLS & FUEL")
 
     return cost_section
