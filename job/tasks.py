@@ -36,14 +36,43 @@ def check_zoho_closed_jobs():
     
     return results
 
+# def process_zoho_connection(connection):
+#     """Process a single Zoho connection for closed deals"""
+#     crm_service = get_crm_service(connection)
+    
+#     # Get last check time from connection metadata or use default (last 24 hours)
+#     last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
+    
+#     # Fetch closed deals since last check
+#     result = crm_service.get_closed_deals(last_check)
+    
+#     if not result['success']:
+#         return {"success": False, "error": result['error'], "processed_count": 0}
+    
+#     closed_deals = result['data']
+#     processed_count = 0
+    
+#     for deal in closed_deals:
+#         success = process_closed_deal(deal, connection)
+#         if success:
+#             processed_count += 1
+    
+#     # Update last sync time if we processed any deals
+#     if processed_count > 0:
+#         connection.last_sync = timezone.now()
+#         connection.save(update_fields=['last_sync'])
+    
+#     return {"success": True, "processed_count": processed_count, "total_count": len(closed_deals)}
+
+
 def process_zoho_connection(connection):
-    """Process a single Zoho connection for closed deals"""
+    """Process a single Zoho connection for closed deals with duplicate prevention"""
     crm_service = get_crm_service(connection)
     
-    # Get last check time from connection metadata or use default (last 24 hours)
+    # Get last check time from connection metadata
     last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
     
-    # Fetch closed deals since last check
+    # Fetch closed deals since last check ONLY
     result = crm_service.get_closed_deals(last_check)
     
     if not result['success']:
@@ -51,18 +80,59 @@ def process_zoho_connection(connection):
     
     closed_deals = result['data']
     processed_count = 0
+    newly_processed_deals = []
     
     for deal in closed_deals:
-        success = process_closed_deal(deal, connection)
-        if success:
-            processed_count += 1
+        deal_id = deal.get('id')
+        last_activity_time = deal.get('Last_Activity_Time')
+        
+        # Check if this deal was already processed (using last activity time)
+        if should_process_deal(deal_id, last_activity_time, connection):
+            success = process_closed_deal(deal, connection)
+            if success:
+                processed_count += 1
+                newly_processed_deals.append({
+                    'deal_id': deal_id,
+                    'last_activity_time': last_activity_time,
+                    'processed_at': timezone.now().isoformat()
+                })
     
-    # Update last sync time if we processed any deals
+    # Update last sync time and processed deals
     if processed_count > 0:
         connection.last_sync = timezone.now()
-        connection.save(update_fields=['last_sync'])
+        
+        # Add newly processed deals to the tracking list
+        current_processed = connection.processed_deals or []
+        current_processed.extend(newly_processed_deals)
+        
+        # Keep only the last 1000 processed deals to avoid bloating
+        if len(current_processed) > 1000:
+            current_processed = current_processed[-1000:]
+        
+        connection.processed_deals = current_processed
+        connection.save(update_fields=['last_sync', 'processed_deals'])
     
     return {"success": True, "processed_count": processed_count, "total_count": len(closed_deals)}
+
+def should_process_deal(deal_id, last_activity_time, connection):
+    """Check if a deal should be processed (avoid duplicates)"""
+    if not deal_id:
+        return False
+    
+    # If no last activity time, process it
+    if not last_activity_time:
+        return True
+    
+    # Check if this deal was already processed
+    processed_deals = connection.processed_deals or []
+    
+    for processed_deal in processed_deals:
+        if (processed_deal.get('deal_id') == deal_id and 
+            processed_deal.get('last_activity_time') == last_activity_time):
+            print(f"Skipping deal {deal_id}: Already processed")
+            return False
+    
+    return True
 
 # crm/tasks.py
 # crm/tasks.py
