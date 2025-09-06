@@ -2516,6 +2516,7 @@ class UserSetupStatusAPI(APIView):
 
         # Check WordPress connection
         wp_connected = WordPressConnection.objects.filter(user=user).exists()
+        business_details = BusinessDetails.objects.filter(user=user).exists()
 
         # Check onboarding form
         onboarding_form = OnboardingForm.objects.filter(user=user).first()
@@ -2564,6 +2565,7 @@ class UserSetupStatusAPI(APIView):
                 "search_console_connected": search_console_connected,
                 "analytics_connected": analytics_connected,
                 "business_profile_connected": business_connected,
+                "business_details_connected": business_details
             },
         }
 

@@ -359,6 +359,7 @@ class AdminClientDetailSerializer(serializers.ModelSerializer):
 
     blogs = serializers.SerializerMethodField()
     onboarding = serializers.SerializerMethodField()
+    
 
     class Meta:
         model = User
