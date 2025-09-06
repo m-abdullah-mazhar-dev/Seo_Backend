@@ -1344,11 +1344,13 @@ def run_job_template_generation(task):
 
 # Update the task creation function to handle template generation
 def create_initial_job_tasks(user, job_onboarding):
-    onboarding_form = user.onboardingform.last()
-    if not onboarding_form or not onboarding_form.package:
-        return None
-    
-    package = onboarding_form.package 
+    # onboarding_form = user.onboardingform.last()
+    # if not onboarding_form or not onboarding_form.package:
+    #     return None
+
+    package = getattr(user, "usersubscription", None)
+    if package:
+        package = package.package
     current_month = timezone.now().strftime("%Y-%m")
     
     # Create blog task
