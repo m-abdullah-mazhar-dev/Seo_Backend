@@ -336,7 +336,7 @@ SOCIALACCOUNT_PROVIDERS = {
 
 GOOGLE_SEARCH_REDIRECT_URI = "https://c6fcf64ed064.ngrok-free.app/search-console/test-search-callback/"
 
-GOOGLE_ANALYTICS_REDIRECT_URI = "https://600779d55b88.ngrok-free.app/analytic-auth"
+GOOGLE_ANALYTICS_REDIRECT_URI = "http://3.85.12.252:3000/analytic-auth"
 
 GOOGLE_BUSINESS_REDIRECT_URI = "http://127.0.0.1:8000/google-business/profile/auth/callback/"
 GOOGLE_BUSINESS_USE_MOCK = DEBUG
