@@ -138,7 +138,7 @@ class JobOnboardingForm(models.Model):
 
     home_time = models.JSONField(default=list, blank=True)
 
-    earning_type = models.BooleanField(max_length=50, null=True, blank= True)
+    earning_type = models.CharField(max_length=50, null=True, blank= True)
 
         # -------------------- Cost Structure --------------------
     company_service_fee = models.DecimalField(
