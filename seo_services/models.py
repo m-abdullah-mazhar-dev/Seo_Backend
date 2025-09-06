@@ -205,3 +205,11 @@ class DataForSEOKeywordData(models.Model):
     
     def __str__(self):
         return f"{self.keyword.keyword} - {self.search_volume} searches"
+    
+
+
+class BusinessDetails(models.Model):
+    user = models.OneToOneField(User,models.CASCADE, related_name="business_details")
+    name = models.CharField(max_length=50,null=True,blank=True)
+    form_url = models.URLField(null=True,blank=True)
+

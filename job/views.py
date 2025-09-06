@@ -6,7 +6,7 @@ from g_matrix.google_service import build_service
 from g_matrix.models import GoogleAnalyticsToken, SearchConsoleToken
 from job.models import *
 from job.utility import create_initial_job_blog_task, generate_structured_job_html, map_cost_structure, upload_job_post_to_wordpress
-from seo_services.models import WordPressConnection
+from seo_services.models import BusinessDetails, WordPressConnection
 from seo_services.upload_blog_to_wp import upload_blog_to_wordpress
 from .serializers import JobBlogSerializer, JobOnboardingFormSerializer, JobTaskSerializer
 from rest_framework.permissions import IsAuthenticated
@@ -679,7 +679,11 @@ class FeedbackAPI(APIView):
                 if location:
                     response_data["review_url"] = location.location_url
         else:
-            response_data["feedback_url"] = "https://your-feedback-form.com"
+            form = BusinessDetails.objects.filter(user = feedback.user).first()
+            print("form------------",form)
+            if form:
+                response_data["feedback_url"] = form.form_url
+            # response_data["feedback_url"] = "https://your-feedback-form.com"
         
         return Response(response_data, status=status.HTTP_200_OK)
 

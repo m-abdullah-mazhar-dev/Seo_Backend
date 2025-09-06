@@ -2581,3 +2581,30 @@ class UserSetupStatusAPI(APIView):
             data["package"] = None
 
         return Response(data)
+
+
+
+class BusinessDetailsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Retrieve business details for logged-in user"""
+        try:
+            business = request.user.business_details  # via related_name
+            serializer = BusinessDetailsSerializer(business)
+            return Response(serializer.data, status=200)
+        except BusinessDetails.DoesNotExist:
+            return Response({"error": "No business details found."}, status=404)
+
+    def post(self, request):
+        """Create or update business details for logged-in user"""
+        try:
+            business = request.user.business_details
+            serializer = BusinessDetailsSerializer(business, data=request.data, partial=True)
+        except BusinessDetails.DoesNotExist:
+            serializer = BusinessDetailsSerializer(data=request.data)
+
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
