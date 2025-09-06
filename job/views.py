@@ -1376,8 +1376,8 @@ def create_initial_job_tasks(user, job_onboarding):
     )
     
     logger.info(f"✅ Initial job tasks created for user {user.email}")
-    # return blog_task , template_task
-    return  template_task
+    return blog_task , template_task
+    # return  template_task
 
 
 # -------------------
