@@ -467,3 +467,11 @@ class CompanyDetailsSerializer(serializers.ModelSerializer):
             return obj.user.usersubscription.status
         except UserSubscription.DoesNotExist:
             return "No Subscription"
+
+
+
+class BusinessDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessDetails
+        fields = ["id", "user", "name", "form_url"]
+        read_only_fields = ["user"]  # user will be set from request

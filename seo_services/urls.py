@@ -30,4 +30,7 @@ urlpatterns = [
     path("company_details/", CompanyDetailsAPIView.as_view()),
 
     path("user/setup-status/", UserSetupStatusAPI.as_view(), name="user-setup-status"),
+
+
+    path("business-details/", BusinessDetailsAPIView.as_view(), name="business-details")
 ]
