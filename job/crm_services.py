@@ -514,8 +514,79 @@ class ZohoCRMService(CRMServiceBase):
         except:
             return f"Zoho Error: HTTP {response.status_code}"
     
+    # def get_closed_deals(self, last_check_time=None):
+    #     """Fetch closed deals from Zoho CRM with proper filtering and debugging"""
+    #     if not self.ensure_valid_token():
+    #         return {"success": False, "error": "Invalid or expired token"}
+        
+    #     url = f"{self.get_api_base_url()}/crm/v2/Deals"
+        
+    #     headers = {
+    #         "Authorization": f"Zoho-oauthtoken {self.connection.oauth_access_token}",
+    #         "Content-Type": "application/json"
+    #     }
+        
+    #     # Build query criteria for closed won deals
+    #     criteria = "(Stage:equals:Closed Won)"
+        
+    #     # Add time filter if provided
+    #     if last_check_time:
+    #         last_check_str = last_check_time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    #         if len(last_check_str) == 25 and last_check_str[-2] == '0':
+    #             last_check_str = last_check_str[:-2] + ':' + last_check_str[-2:]
+    #         criteria = f"({criteria} and Last_Activity_Time:greater_than:{last_check_str})"
+        
+    #     params = {
+    #         "criteria": criteria,
+    #         "fields": "id,Deal_Name,Amount,Closing_Date,Contact_Name,Description,Service_Area,Last_Activity_Time",
+    #         "sort_by": "Last_Activity_Time",
+    #         "sort_order": "asc",
+    #         "per_page": 200
+    #     }
+        
+    #     try:
+    #         response = requests.get(url, headers=headers, params=params)
+    #         print(f"Zoho get closed deals response: {response.status_code}")
+            
+    #         if response.status_code == 200:
+    #             data = response.json()
+    #             deals = data.get('data', [])
+    #             print(f"Found {len(deals)} closed deals")
+                
+    #             # DEBUG: Print detailed information about each deal
+    #             for i, deal in enumerate(deals):
+    #                 print(f"\n=== Deal {i+1} ===")
+    #                 print(f"ID: {deal.get('id')}")
+    #                 print(f"Name: {deal.get('Deal_Name')}")
+    #                 print(f"Stage: {deal.get('Stage')}")
+    #                 print(f"Contact_Name: {deal.get('Contact_Name')}")
+    #                 print(f"Contact_Name type: {type(deal.get('Contact_Name'))}")
+                    
+    #                 # Debug contact information in detail
+    #                 contact_info = deal.get('Contact_Name')
+    #                 if contact_info:
+    #                     if isinstance(contact_info, dict):
+    #                         print(f"Contact ID: {contact_info.get('id')}")
+    #                         print(f"Contact Name: {contact_info.get('name')}")
+                            
+    #                         # Try to fetch contact details if we have an ID
+    #                         if contact_info.get('id'):
+    #                             self.debug_contact_details(contact_info['id'], headers)
+    #                     else:
+    #                         print(f"Contact info is not a dictionary: {contact_info}")
+                    
+    #                 print("All deal fields:", list(deal.keys()))
+                
+    #             return {"success": True, "data": deals}
+    #         else:
+    #             error_msg = self.handle_zoho_error(response)
+    #             return {"success": False, "error": error_msg}
+    #     except requests.RequestException as e:
+    #         return {"success": False, "error": f"Request failed: {str(e)}"}
+
+    # services.py
     def get_closed_deals(self, last_check_time=None):
-        """Fetch closed deals from Zoho CRM with proper filtering and debugging"""
+        """Fetch closed deals from Zoho CRM with time filtering"""
         if not self.ensure_valid_token():
             return {"success": False, "error": "Invalid or expired token"}
         
@@ -529,18 +600,23 @@ class ZohoCRMService(CRMServiceBase):
         # Build query criteria for closed won deals
         criteria = "(Stage:equals:Closed Won)"
         
-        # Add time filter if provided
+        # Add time filter if provided - ONLY get deals modified since last check
         if last_check_time:
+            # Convert to Zoho format
             last_check_str = last_check_time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            # Format timezone offset properly
             if len(last_check_str) == 25 and last_check_str[-2] == '0':
                 last_check_str = last_check_str[:-2] + ':' + last_check_str[-2:]
-            criteria = f"({criteria} and Last_Activity_Time:greater_than:{last_check_str})"
+            
+            # Use Modified_Time instead of Last_Activity_Time for better accuracy
+            criteria = f"({criteria} and Modified_Time:greater_than:{last_check_str})"
+            print(f"Filtering deals modified after: {last_check_str}")
         
         params = {
             "criteria": criteria,
-            "fields": "id,Deal_Name,Amount,Closing_Date,Contact_Name,Description,Service_Area,Last_Activity_Time",
-            "sort_by": "Last_Activity_Time",
-            "sort_order": "asc",
+            "fields": "id,Deal_Name,Amount,Closing_Date,Contact_Name,Description,Service_Area,Last_Activity_Time,Modified_Time",
+            "sort_by": "Modified_Time",  # Sort by modification time
+            "sort_order": "asc",  # Get oldest first
             "per_page": 200
         }
         
@@ -551,39 +627,14 @@ class ZohoCRMService(CRMServiceBase):
             if response.status_code == 200:
                 data = response.json()
                 deals = data.get('data', [])
-                print(f"Found {len(deals)} closed deals")
-                
-                # DEBUG: Print detailed information about each deal
-                for i, deal in enumerate(deals):
-                    print(f"\n=== Deal {i+1} ===")
-                    print(f"ID: {deal.get('id')}")
-                    print(f"Name: {deal.get('Deal_Name')}")
-                    print(f"Stage: {deal.get('Stage')}")
-                    print(f"Contact_Name: {deal.get('Contact_Name')}")
-                    print(f"Contact_Name type: {type(deal.get('Contact_Name'))}")
-                    
-                    # Debug contact information in detail
-                    contact_info = deal.get('Contact_Name')
-                    if contact_info:
-                        if isinstance(contact_info, dict):
-                            print(f"Contact ID: {contact_info.get('id')}")
-                            print(f"Contact Name: {contact_info.get('name')}")
-                            
-                            # Try to fetch contact details if we have an ID
-                            if contact_info.get('id'):
-                                self.debug_contact_details(contact_info['id'], headers)
-                        else:
-                            print(f"Contact info is not a dictionary: {contact_info}")
-                    
-                    print("All deal fields:", list(deal.keys()))
-                
+                print(f"Found {len(deals)} closed deals since last check")
                 return {"success": True, "data": deals}
             else:
                 error_msg = self.handle_zoho_error(response)
                 return {"success": False, "error": error_msg}
         except requests.RequestException as e:
             return {"success": False, "error": f"Request failed: {str(e)}"}
-    
+        
     def debug_contact_details(self, contact_id, headers):
         """Fetch and debug contact details"""
         try:
