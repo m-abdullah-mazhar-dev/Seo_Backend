@@ -27,11 +27,11 @@ def check_zoho_closed_jobs():
     results = []
     
     for connection in zoho_connections:
-        # result = process_zoho_connection(connection)
+        result = process_zoho_connection(connection)
         results.append({
             'connection_id': connection.id,
             'connection_name': connection.connection_name,
-            # 'result': result
+            'result': result
         })
     
     return results

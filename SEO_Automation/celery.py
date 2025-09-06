@@ -16,14 +16,15 @@ app.conf.timezone = 'Asia/Karachi'
 app.conf.beat_schedule = {
     'process-due-seo-tasks-every-minute': {
         'task': 'seo_services.tasks.process_due_seo_tasks',
-        'schedule': crontab(minute='*/5'),
-        # 'schedule': crontab(),  # Runs every minute
+        # 'schedule': crontab(minute='*/5'),
+        'schedule': crontab(),  # Runs every minute
         'args': (),  # You can pass arguments if needed
     },
     'process-due-job-tasks-every-minute': {
         'task': 'seo_services.tasks.process_due_job_tasks',
-        'schedule': crontab(minute='*/5'),
-        'args': (),  # You can pass arguments if needed
+        'schedule': crontab(), 
+        # 'schedule': crontab(minute='*/5'),
+        # 'args': (),  # You can pass arguments if needed
     },
     'reactivate-monthly-blog-tasks': {
         'task': 'seo_services.tasks.reactivate_monthly_blog_tasks',
@@ -35,12 +36,12 @@ app.conf.beat_schedule = {
         # 'schedule': crontab(),  # Runs every minute
         'schedule': crontab(minute=0, hour=0),  # every day at midnight
     },
-    # 'process-job-closed-task': {
-    #     'task': 'job.tasks.check_zoho_closed_jobs',
-    #     'schedule': crontab(),  # Runs every minute
-    #     #  'schedule': crontab(minute=0, hour='*'),
-    #     # 'schedule': crontab(minute=0, hour=0),  # every day at midnight
-    # },
+    'process-job-closed-task': {
+        'task': 'job.tasks.check_zoho_closed_jobs',
+        # 'schedule': crontab(),  # Runs every minute
+         'schedule': crontab(minute=0, hour='*'),
+        # 'schedule': crontab(minute=0, hour=0),  # every day at midnight
+    },
 }
 
 
