@@ -67,13 +67,13 @@ class OnBoardingFormSerializer(serializers.ModelSerializer):
             })
 
         # 2️⃣ Check keyword limit per service
-        for idx, service in enumerate(services, start=1):
-            keywords = service.get("keywords", [])
-            if len(keywords) > package.keyword_limit:
-                raise serializers.ValidationError({
-                    "services": f"Service {idx} exceeds keyword limit "
-                                f"({len(keywords)}/{package.keyword_limit})."
-                })
+        # for idx, service in enumerate(services, start=1):
+        #     keywords = service.get("keywords", [])
+        #     if len(keywords) > package.keyword_limit:
+        #         raise serializers.ValidationError({
+        #             "services": f"Service {idx} exceeds keyword limit "
+        #                         f"({len(keywords)}/{package.keyword_limit})."
+        #         })
 
         # 3️⃣ Check service area limit
         if len(service_areas) > package.service_area_limit:

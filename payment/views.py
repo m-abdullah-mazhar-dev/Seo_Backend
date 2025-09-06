@@ -646,6 +646,17 @@ class SubscriptionDetailsAPIView(APIView):
                 "days_used": days_used,
                 "days_remaining": days_remaining,
                 "total_days": total_days,
+
+                #  Package limits
+                "service_limit": package.service_limit,
+                "service_area_limit": package.service_area_limit,
+                "business_location_limit": package.business_location_limit,
+                "blog_limit": package.blog_limit,
+                "gmb_post_limit": package.gmb_post_limit,
+                "keyword_limit": package.keyword_limit,
+                "seo_optimization_limit": package.seo_optimization_limit,
+                "job_post_limit": package.job_post_limit,
+
             }
             return Response(data)
 
