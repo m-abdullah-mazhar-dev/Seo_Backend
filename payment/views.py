@@ -116,6 +116,9 @@ class CreateSubscription(APIView):
     def get(self, request):
         try:
             subscription = UserSubscription.objects.get(user=request.user)
+            if subscription.status in ["canceled", "incomplete_expired"]:
+                return Response({"error": "No subscription found for the user."}, status=404)
+
             serializer = UserSubscriptionSerializer(subscription)
             return Response(serializer.data)
         except UserSubscription.DoesNotExist:
@@ -610,6 +613,9 @@ class SubscriptionDetailsAPIView(APIView):
             user_sub = UserSubscription.objects.select_related("package").get(user=request.user)
             stripe_sub = stripe.Subscription.retrieve(user_sub.stripe_subscription_id)
 
+            if stripe_sub["status"] in ["canceled", "incomplete_expired"]:
+                return Response({"error": "No subscription found for the user."}, status=404)
+
             # Try to get period dates from subscription root or fallback to items
             current_period_start = stripe_sub.get("current_period_start") or \
                 stripe_sub["items"]["data"][0].get("current_period_start")
@@ -646,16 +652,6 @@ class SubscriptionDetailsAPIView(APIView):
                 "days_used": days_used,
                 "days_remaining": days_remaining,
                 "total_days": total_days,
-
-                #  Package limits
-                "service_limit": package.service_limit,
-                "service_area_limit": package.service_area_limit,
-                "business_location_limit": package.business_location_limit,
-                "blog_limit": package.blog_limit,
-                "gmb_post_limit": package.gmb_post_limit,
-                "keyword_limit": package.keyword_limit,
-                "seo_optimization_limit": package.seo_optimization_limit,
-                "job_post_limit": package.job_post_limit,
 
             }
             return Response(data)
