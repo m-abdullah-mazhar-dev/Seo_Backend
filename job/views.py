@@ -5,7 +5,7 @@ from rest_framework import status
 from g_matrix.google_service import build_service
 from g_matrix.models import GoogleAnalyticsToken, SearchConsoleToken
 from job.models import *
-from job.utility import create_initial_job_blog_task, generate_structured_job_html, map_cost_structure, upload_job_post_to_wordpress
+from job.utility import convert_template_to_html, create_initial_job_blog_task, generate_structured_job_html, map_cost_structure, process_job_template_html, upload_job_post_to_wordpress
 from seo_services.models import BusinessDetails, WordPressConnection
 from seo_services.upload_blog_to_wp import upload_blog_to_wordpress
 from .serializers import JobBlogSerializer, JobOnboardingFormSerializer, JobTaskSerializer
@@ -1024,7 +1024,15 @@ def map_job_form_to_api_payload(job_form):
     # position = "Company Driver"  # Default assumption
     position = job_form.position
     route = job_form.route
+
+    # if not position:
+    #     position = 
+    #     # Set default based on other fields or logic
+    #     if job_form.position_1099 or job_form.position_w2:
+    #         position = "Company Driver"
+    #   # Generic fallback
     
+    pay_type = ""
     # Determine pay type
     if job_form.position_1099 and job_form.position_w2:
         pay_type = "1099 or W2"
@@ -1033,7 +1041,7 @@ def map_job_form_to_api_payload(job_form):
     elif job_form.position_w2:
         pay_type = "W2"
     else:
-        pay_type = "Not specified"
+        position = "Driver" 
     
     # Determine pay structure
     pay_structure = ""
@@ -1297,7 +1305,9 @@ def run_job_template_generation(task):
         # WordPress upload - convert the template to HTML and post
         if hasattr(user, 'wordpress_connection'):
             # Convert the template text to HTML
-            html_content = f"<div>{job_template.replace('**', '<strong>').replace('*', '<li>').replace('\n', '<br>')}</div>"
+            # html_content = convert_template_to_html(job_template)
+            html_content = process_job_template_html(job_template)
+            # html_content = f"<div>{job_template.replace('**', '<strong>').replace('*', '<li>').replace('\n', '<br>')}</div>"
             upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content,api_payload=data, job_task=task)
 
         # Auto-create next task if limit not reached - same logic as before

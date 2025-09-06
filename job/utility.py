@@ -416,7 +416,7 @@ def map_cost_structure(job_form):
     # --- Lease-to-Rent ---
     elif position == "lease-to-rent":
         cost_section["title"] = "Lease-To-Rent Cost Breakdown"
-        cost_section["service_fee"] = "$500 FIXED"
+        cost_section["service_fee"] = f"{job_form.company_service_fee}%"
 
         if job_form.truck_lease_weekly:
             cost_section["weekly_expenses"].append(f"TRUCK LEASE – ${job_form.truck_lease_weekly}/WEEK")
@@ -448,7 +448,7 @@ def map_cost_structure(job_form):
     # --- Lease-to-Purchase ---
     elif position == "lease-to-purchase":
         cost_section["title"] = "Lease-To-Purchase Cost Breakdown"
-        cost_section["service_fee"] = "$500 FIXED"
+        cost_section["service_fee"] = f"{job_form.company_service_fee}%"
 
         if job_form.truck_lease_weekly:
             cost_section["weekly_expenses"].append(f"TRUCK LEASE – ${job_form.truck_lease_weekly}/WEEK")
@@ -472,10 +472,73 @@ def map_cost_structure(job_form):
                 cost_section["weekly_expenses"].append(f"TABLET & DATA – ${job_form.tablet_cost}/WEEK")
 
         if job_form.down_payment:
-            cost_section["weekly_expenses"].append(f"DOWN PAYMENT – ${job_form.down_payment}")
+            cost_section["weekly_expenses"].append(f"DOWN PAYMENT – ${job_form.down_payment_amount}")
         if job_form.tolls_fuel:
             cost_section["weekly_expenses"].append(f"{job_form.tolls_fuel}")
         else:
             cost_section["weekly_expenses"].append("TOLLS & FUEL")
 
     return cost_section
+
+# With proper HTML conversion:
+def convert_template_to_html(job_template):
+    """
+    Convert markdown-like template to proper HTML
+    """
+    # First, handle bold text (**text**)
+    html_content = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', job_template)
+    
+    # Handle bullet points (* item)
+    html_content = re.sub(r'\*\s+(.*?)(?=\n|$)', r'<li>\1</li>', html_content)
+    
+    # Wrap bullet points in <ul>
+    if '<li>' in html_content:
+        html_content = html_content.replace('<li>', '<ul><li>', 1)
+        html_content += '</ul>'
+    
+    # Handle line breaks
+    html_content = html_content.replace('\n', '<br>')
+    
+    return f"<div>{html_content}</div>"
+
+
+import re
+
+def process_job_template_html(job_template):
+    """
+    Properly convert job template markdown to HTML
+    """
+    if not job_template:
+        return "<div></div>"
+    
+    # Convert **bold** to <strong>
+    html_content = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', job_template)
+    
+    # Convert * bullet points to list items
+    lines = html_content.split('\n')
+    in_list = False
+    processed_lines = []
+    
+    for line in lines:
+        # Check if this line is a bullet point
+        if line.strip().startswith('* ') and len(line.strip()) > 2:
+            if not in_list:
+                processed_lines.append('<ul>')
+                in_list = True
+            # Remove the asterisk and add list item
+            list_item = line.replace('* ', '').strip()
+            processed_lines.append(f'<li>{list_item}</li>')
+        else:
+            if in_list:
+                processed_lines.append('</ul>')
+                in_list = False
+            processed_lines.append(line)
+    
+    # Close list if still open
+    if in_list:
+        processed_lines.append('</ul>')
+    
+    # Join lines with proper line breaks
+    html_content = '<br>'.join(processed_lines)
+    
+    return f"<div>{html_content}</div>"
