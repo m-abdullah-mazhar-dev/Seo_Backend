@@ -10,6 +10,7 @@ from django.utils import timezone
 # Create your models here.
 
 class JobOnboardingForm(models.Model):
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="jobonboardingform")
     # -------------------- Basic Company Details --------------------
     company_name = models.CharField(max_length=255)
@@ -25,6 +26,7 @@ class JobOnboardingForm(models.Model):
     # -------------------- Vehicle Details --------------------
     transmission_automatic = models.BooleanField(default=False)
     transmission_manual = models.BooleanField(default=False)
+    pay_type = models.CharField(max_length=50,null=True,blank=True)
 
     position_1099 = models.BooleanField(default=False)
     position_w2 = models.BooleanField(default=False)
@@ -136,7 +138,7 @@ class JobOnboardingForm(models.Model):
 
     home_time = models.JSONField(default=list, blank=True)
 
-    earning_type = models.CharField(max_length=50, null=True, blank= True)
+    earning_type = models.BooleanField(max_length=50, null=True, blank= True)
 
         # -------------------- Cost Structure --------------------
     company_service_fee = models.DecimalField(
@@ -171,7 +173,8 @@ class JobOnboardingForm(models.Model):
     truck_lease_weekly = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True
     )
-    down_payment = models.DecimalField(
+    down_payment = models.BooleanField(null=True, blank=True)
+    down_payment_amount = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
 
