@@ -31,12 +31,15 @@ from .views import run_blog_writing, run_gmb_post_creation, run_keyword_optimiza
 from datetime import timedelta
 from django.conf import settings
 from django.db.models import Case, When, Value, IntegerField
+from SEO_Automation.db_router import set_current_service
+
 
 
 logger = logging.getLogger(__name__)
 
 @shared_task
 def process_due_seo_tasks():
+    set_current_service("seo")
     logger.info(f"🔄SEO tasks started.")
     now = timezone.now()
     # tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
@@ -83,6 +86,7 @@ def process_due_seo_tasks():
 @shared_task
 def process_due_job_tasks():
     logger.info(f"🔄 Job tasks started.")
+    set_current_service("trucking")
     now = timezone.now()
     tasks = JobTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
     logger.info(f"🔄 Found {tasks.count()} due Job tasks to process.")
@@ -107,6 +111,7 @@ def process_due_job_tasks():
 def reactivate_monthly_blog_tasks():
     logger = logging.getLogger(__name__)
     logger.info("🔁 Checking for monthly reset of blog tasks...")
+    set_current_service("seo")
     current_month = timezone.now().strftime('%Y-%m')
     
     paused_tasks = SEOTask.objects.filter(

@@ -71,6 +71,8 @@ INSTALLED_APPS = [
 
 
 
+DATABASE_ROUTERS = ["SEO_Automation.db_router.MultiDBRouter"]
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
@@ -81,6 +83,7 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "SEO_Automation.middleware.ServiceTypeMiddleware",
 ]
 
 ROOT_URLCONF = 'SEO_Automation.urls'
@@ -111,7 +114,11 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    },
+    "trucking": {  # Trucking DB
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "trucking.sqlite3",
+    },
 }
 
 
@@ -368,3 +375,7 @@ DATAFORSEO_KEY = os.getenv('DATAFORSEO_KEY', '')
 
 # Your target domain for ranking detection
 TARGET_DOMAIN = os.getenv('TARGET_DOMAIN', 'https://galaxywholesales.com')
+
+
+SEO_DOMAIN = os.getenv("SEO_DOMAIN", "127.0.0.1:3000")
+TRUCKING_DOMAIN = os.getenv("TRUCKING_DOMAIN", "127.0.0.1:8000")

@@ -2,6 +2,7 @@
 from celery import shared_task
 from django.utils import timezone
 from django.conf import settings
+from SEO_Automation.db_router import set_current_service
 from job.models import CRMConnection, ClientFeedback
 from job.crm_services import get_crm_service
 import requests
@@ -19,6 +20,7 @@ def check_zoho_closed_jobs():
     """Celery task to check Zoho CRM for closed jobs and send to n8n"""
     # Get all active Zoho connections
     logger.info(f"🔄SEO tasks started.")
+    set_current_service("trucking")
     zoho_connections = CRMConnection.objects.filter(
         crm_type__provider='zoho',
         is_connected=True
