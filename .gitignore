@@ -19,3 +19,6 @@ venv/
 db.sqlite3
 trucking.sqlite3
 *.pyc
+
+
+celerybeat-schedule*
