@@ -860,8 +860,9 @@ def run_job_blog_writing(task):
 
         # Monthly check
         current_month = timezone.now().strftime("%Y-%m")
-        onboarding_form = user.onboardingform.last()
-        package = onboarding_form.package
+        # onboarding_form = user.onboardingform.last()
+        package = getattr(user.usersubscription, "package", None)
+        # package = onboarding_form.package
         if not package:
             logger.warning("⚠ No package found for user.")
             task.status = "failed"

@@ -1,5 +1,7 @@
 from celery import shared_task
 from django.contrib.auth import get_user_model
+
+from SEO_Automation.db_router import set_current_service
 from .models import SearchConsoleToken
 from .utils import sync_user_keywords
 import logging
@@ -9,6 +11,7 @@ User = get_user_model()
 
 @shared_task
 def sync_all_user_keywords():
+    set_current_service("seo")
     logger.info("🔁 Starting GSC keyword sync for all users...")
 
     tokens = SearchConsoleToken.objects.select_related("user").all()
