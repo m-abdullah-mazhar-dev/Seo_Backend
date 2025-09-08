@@ -38,8 +38,8 @@ app.conf.beat_schedule = {
     },
     'process-job-closed-task': {
         'task': 'job.tasks.check_zoho_closed_jobs',
-        # 'schedule': crontab(),  # Runs every minute
-         'schedule': crontab(minute=0, hour='*'),
+        'schedule': crontab(),  # Runs every minute
+        #  'schedule': crontab(minute=0, hour='*'),
         # 'schedule': crontab(minute=0, hour=0),  # every day at midnight
     },
 }
