@@ -36,6 +36,7 @@ urlpatterns = [
 
 
     path('jobs/sync/', JobContentMetricsView.as_view(), name='sync-job-metrics'),
+    path('jobs/keywords/sync/', SyncJobKeywordsView.as_view(), name='sync-job-keywords'),
     path('jobs/analytics/sync/', JobContentAnalyticsView.as_view(), name='sync-job-analytics'),
     path('jobs/performance/', JobPerformanceDashboardView.as_view(), name='job-performance-dashboard'),
     
