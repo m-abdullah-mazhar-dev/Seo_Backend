@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import redirect
 from django.contrib.auth.models import User
+from SEO_Automation.db_router import get_current_service
 from g_matrix.google_service import get_flow_search, build_service
 from g_matrix.utils import sync_user_keywords
 from .models import *
@@ -189,6 +190,11 @@ def google_analytics_auth_start(request):
     base_url = "https://accounts.google.com/o/oauth2/v2/auth"
     scope = "https://www.googleapis.com/auth/analytics.readonly"
     redirect_uri = settings.GOOGLE_ANALYTICS_REDIRECT_URI
+    service = get_current_service()
+    if service == "trucking":
+        redirect_uri = settings.GOOGLE_ANALYTICS_REDIRECT_URI_TRUCKING
+    else:
+        redirect_uri = settings.GOOGLE_ANALYTICS_REDIRECT_URI
     print(redirect_uri)
     auth_url = (
         f"{base_url}?client_id={settings.GOOGLE_CLIENT_ID}"

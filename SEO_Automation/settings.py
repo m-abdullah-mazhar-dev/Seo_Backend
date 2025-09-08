@@ -342,9 +342,11 @@ SOCIALACCOUNT_PROVIDERS = {
 # settings.py
 
 # GOOGLE_SEARCH_REDIRECT_URI = "https://2728e54685d6.ngrok-free.app/search-console/test-search-callback/"
-GOOGLE_SEARCH_REDIRECT_URI = "https://49b3e67d1c1f.ngrok-free.app/search-console-auth"
+GOOGLE_SEARCH_REDIRECT_URI = "http://3.85.12.252:3000/search-console-auth"
+GOOGLE_SEARCH_REDIRECT_URI_TRUCKING = "http://18.212.222.19:3000/search-console-auth"
 
 GOOGLE_ANALYTICS_REDIRECT_URI = "http://3.85.12.252:3000/analytic-auth"
+GOOGLE_ANALYTICS_REDIRECT_URI_TRUCKING = "http://18.212.222.19:3000/analytic-auth"
 
 GOOGLE_BUSINESS_REDIRECT_URI = "http://127.0.0.1:8000/google-business/profile/auth/callback/"
 GOOGLE_BUSINESS_USE_MOCK = DEBUG
