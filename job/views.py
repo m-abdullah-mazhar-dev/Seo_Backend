@@ -5,7 +5,7 @@ from rest_framework import status
 from g_matrix.google_service import build_service
 from g_matrix.models import GoogleAnalyticsToken, SearchConsoleToken
 from job.models import *
-from job.utility import convert_template_to_html, create_initial_job_blog_task, generate_structured_job_html, map_cost_structure, process_job_template_html, upload_job_post_to_wordpress
+from job.utility import convert_template_to_html, create_initial_job_blog_task, generate_structured_job_html, map_cost_structure, process_job_template_html, sync_job_keywords, upload_job_post_to_wordpress
 from seo_services.models import BusinessDetails, WordPressConnection
 from seo_services.upload_blog_to_wp import upload_blog_to_wordpress
 from .serializers import JobBlogSerializer, JobOnboardingFormSerializer, JobTaskSerializer
@@ -958,6 +958,11 @@ def run_job_blog_writing(task):
             content=blog_html
         )
         
+         # ✅✅✅ NEW: SAVE THE KEYWORDS TO THE DATABASE
+        for keyword_text in keywords:
+            JobBlogKeyword.objects.create(job_blog=job_blog, keyword=keyword_text.lower())
+        logger.info(f"💾 Saved {len(keywords)} keywords for blog.")
+
         # ✅ Save image if available
         if image_url:
             JobBlogImage.objects.create(
@@ -1588,6 +1593,21 @@ class JobContentMetricsView(APIView):
         parsed_gsc = urlparse(gsc_url)
         # Simple matching: compare the path part of the URL
         return parsed_stored.path == parsed_gsc.path
+    
+
+
+
+class SyncJobKeywordsView(APIView):
+    """
+    API to trigger synchronization of Search Console data for Job Blog keywords.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        result = sync_job_keywords(request.user)
+        if 'error' in result:
+            return Response(result, status=500)
+        return Response(result)
     
 
 

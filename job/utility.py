@@ -1,7 +1,9 @@
 import requests
 from django.utils.text import slugify
 
-from job.models import JobTask
+from g_matrix.google_service import build_service
+from g_matrix.models import SearchConsoleToken
+from job.models import JobBlogKeyword, JobTask
 
 
 
@@ -249,7 +251,7 @@ def generate_map_html(api_payload):
 
 import json
 from django.utils.html import escape
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def generate_structured_job_html(job_form):
     """
@@ -542,3 +544,109 @@ def process_job_template_html(job_template):
     html_content = '<br>'.join(processed_lines)
     
     return f"<div>{html_content}</div>"
+
+
+
+from django.utils import timezone
+from django.core import serializers
+import json
+
+def sync_job_keywords(user):
+    """
+    Fetches Search Console data for all keywords linked to a user's job blogs
+    and updates their metrics. Returns the updated keyword data.
+    """
+    try:
+        # 1. Get the user's Search Console token
+        try:
+            token = SearchConsoleToken.objects.get(user=user)
+        except SearchConsoleToken.DoesNotExist:
+            return {"error": "Search Console token not found"}
+
+        # 2. Get all keywords for this user's job blogs
+        user_keywords = JobBlogKeyword.objects.filter(job_blog__job_task__user=user)
+        if not user_keywords.exists():
+            return {"message": "No keywords found for user's job blogs."}
+
+        # Create a lookup dictionary: keyword_lowercase -> Model Instance
+        keyword_map = {k.keyword.lower(): k for k in user_keywords}
+        print(f"Keywords to sync for user {user.email}: {list(keyword_map.keys())}")
+
+        # 3. Build the service and query GSC
+        service = build_service(token.credentials)
+        end_date = timezone.now().date()
+        start_date = end_date - timedelta(days=30) # Last 30 days
+
+        response = service.searchanalytics().query(
+            siteUrl=token.site_url,
+            body={
+                'startDate': start_date.strftime('%Y-%m-%d'),
+                'endDate': end_date.strftime('%Y-%m-%d'),
+                'dimensions': ['query'], # This is the key - we want data by query (keyword)
+                'rowLimit': 5000,
+            }
+        ).execute()
+
+        # 4. Process the response and update the keyword models
+        updated_keywords = []
+        updated_count = 0
+        
+        for row in response.get('rows', []):
+            query = row['keys'][0].lower() # The search query from GSC
+            if query in keyword_map:
+                keyword_obj = keyword_map[query]
+                keyword_obj.clicks = row.get('clicks', 0)
+                keyword_obj.impressions = row.get('impressions', 0)
+                keyword_obj.ctr = row.get('ctr', 0)
+                keyword_obj.average_position = row.get('position', 0)
+                keyword_obj.last_updated = timezone.now()
+                keyword_obj.save()
+                updated_count += 1
+                
+                # Store the updated data for response
+                updated_keywords.append({
+                    'id': keyword_obj.id,
+                    'keyword': keyword_obj.keyword,
+                    'clicks': keyword_obj.clicks,
+                    'impressions': keyword_obj.impressions,
+                    'ctr': keyword_obj.ctr,
+                    'average_position': keyword_obj.average_position,
+                    'last_updated': keyword_obj.last_updated.isoformat() if keyword_obj.last_updated else None,
+                    'blog_title': keyword_obj.job_blog.title,
+                    'blog_url': keyword_obj.job_blog.wp_post_url
+                })
+                
+                print(f"Updated '{query}': {keyword_obj.clicks} clicks")
+
+        # 5. Also include keywords that were processed but had no data in GSC
+        all_processed_keywords = []
+        for keyword_obj in user_keywords:
+            keyword_data = {
+                'id': keyword_obj.id,
+                'keyword': keyword_obj.keyword,
+                'clicks': keyword_obj.clicks,
+                'impressions': keyword_obj.impressions,
+                'ctr': keyword_obj.ctr,
+                'average_position': keyword_obj.average_position,
+                'last_updated': keyword_obj.last_updated.isoformat() if keyword_obj.last_updated else None,
+                'blog_title': keyword_obj.job_blog.title,
+                'blog_url': keyword_obj.job_blog.wp_post_url,
+                'has_data_in_gsc': keyword_obj.keyword.lower() in [k['keyword'].lower() for k in updated_keywords]
+            }
+            all_processed_keywords.append(keyword_data)
+
+        return {
+            "status": "success",
+            "message": f"Synced GSC data for {updated_count} keywords",
+            "details": {
+                "user": user.email,
+                "total_keywords_processed": len(user_keywords),
+                "keywords_with_data": updated_count,
+                "time_period": f"{start_date} to {end_date}"
+            },
+            "keywords": all_processed_keywords  # This is the key addition!
+        }
+
+    except Exception as e:
+        print(f"❌ Error in sync_job_keywords: {str(e)}")
+        return {"error": str(e)}

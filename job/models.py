@@ -284,6 +284,23 @@ class JobBlogImage(models.Model):
 
     def __str__(self):
         return f"Image for {self.job_blog.title}"
+    
+
+class JobBlogKeyword(models.Model):
+    job_blog = models.ForeignKey(JobBlog, on_delete=models.CASCADE, related_name='keywords')
+    keyword = models.CharField(max_length=200)
+    # Search Console Metrics
+    clicks = models.IntegerField(default=0)
+    impressions = models.IntegerField(default=0)
+    ctr = models.FloatField(default=0)
+    average_position = models.FloatField(default=0)
+    last_updated = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ('job_blog', 'keyword')  # Prevent duplicate keywords per blog
+
+    def __str__(self):
+        return f"{self.keyword} (for: {self.job_blog.title})"
 
 class CRMType(models.Model):
     CRM_PROVIDERS = [
