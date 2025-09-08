@@ -20,7 +20,7 @@ def check_zoho_closed_jobs():
     """Celery task to check Zoho CRM for closed jobs and send to n8n"""
     # Get all active Zoho connections
     logger.info(f"🔄SEO tasks started.")
-    set_current_service("trucking")
+    set_current_service("seo")
     zoho_connections = CRMConnection.objects.filter(
         crm_type__provider='zoho',
         is_connected=True
