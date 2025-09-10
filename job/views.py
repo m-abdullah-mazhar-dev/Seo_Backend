@@ -1389,23 +1389,54 @@ def create_initial_job_tasks(user, job_onboarding):
 
 
 # -------------------
+from rest_framework.pagination import PageNumberPagination
+class JobPostsPagination(PageNumberPagination):
+    page_size = 10  # default items per page
+    page_size_query_param = 'page_size'  # allow client to override
+    max_page_size = 50
 
 class MyJobPostsView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        # Get job tasks that represent job posts
-        job_tasks = JobTask.objects.filter(
-            user=request.user, 
-            task_type='job_template_generation'  # or whatever task type represents job posts
-        ).order_by('-created_at')
-        
-        serializer = JobTaskSerializer(job_tasks, many=True)
+    def get(self, request, pk=None):
+        if pk is None:
+            # Get all job posts for this user
+            job_tasks = JobTask.objects.filter(
+                user=request.user,
+                task_type="job_template_generation"
+            ).order_by("-created_at")
+
+            
+            paginator = JobPostsPagination()
+            result_page = paginator.paginate_queryset(job_tasks, request)
+            serializer = JobTaskSerializer(result_page, many=True)
+
+            return paginator.get_paginated_response({
+                "success": True,
+                "message": "Job posts retrieved successfully.",
+                "data": serializer.data,
+            })
+
+        # Single job post retrieval
+        job_task = JobTask.objects.filter(
+            user=request.user,
+            task_type="job_template_generation",
+            pk=pk
+        ).first()
+
+        if not job_task:
+            return Response({
+                "success": False,
+                "message": "Job post not found.",
+                "data": None,
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = JobTaskSerializer(job_task)
         return Response({
-            "success": True, 
-            "message": "Job posts retrieved successfully.", 
-            "data": serializer.data
-        })
+            "success": True,
+            "message": "Job post retrieved successfully.",
+            "data": serializer.data,
+        }, status=status.HTTP_200_OK)
 
 class MyJobBlogsView(APIView):
     permission_classes = [IsAuthenticated]
