@@ -1390,32 +1390,60 @@ def create_initial_job_tasks(user, job_onboarding):
 
 # -------------------
 from rest_framework.pagination import PageNumberPagination
+import math
 class JobPostsPagination(PageNumberPagination):
-    page_size = 10  # default items per page
-    page_size_query_param = 'page_size'  # allow client to override
+    page_size = 10
+    page_size_query_param = 'page_size'
     max_page_size = 50
+
+    def paginate_queryset(self, queryset, request, view=None):
+        self.request = request
+        self.count = queryset.count()
+        self.page_size = self.get_page_size(request) or self.page_size
+
+        try:
+            return super().paginate_queryset(queryset, request, view=view)
+        except Exception:
+            # If page is invalid, don't break — return empty list
+            self.page = None
+            return []
+
+    def get_paginated_response(self, data):
+        total_items = self.count
+        page_size = self.page_size
+        total_pages = math.ceil(total_items / page_size) if page_size else 1
+        current_page = (
+            self.page.number if self.page else int(self.request.query_params.get("page", 1))
+        )
+
+        return Response({
+            "success": True,
+            "message": "Job posts retrieved successfully.",
+            "pagination": {
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "current_page": current_page,
+                "page_size": page_size,
+            },
+            "data": data if data is not None else [],
+        })
 
 class MyJobPostsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk=None):
         if pk is None:
-            # Get all job posts for this user
             job_tasks = JobTask.objects.filter(
                 user=request.user,
                 task_type="job_template_generation"
             ).order_by("-created_at")
 
-            
             paginator = JobPostsPagination()
             result_page = paginator.paginate_queryset(job_tasks, request)
             serializer = JobTaskSerializer(result_page, many=True)
 
-            return paginator.get_paginated_response({
-                "success": True,
-                "message": "Job posts retrieved successfully.",
-                "data": serializer.data,
-            })
+            # ✅ send serializer.data directly
+            return paginator.get_paginated_response(serializer.data)
 
         # Single job post retrieval
         job_task = JobTask.objects.filter(
