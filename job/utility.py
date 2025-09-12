@@ -650,3 +650,65 @@ def sync_job_keywords(user):
     except Exception as e:
         print(f"❌ Error in sync_job_keywords: {str(e)}")
         return {"error": str(e)}
+    
+
+import requests
+from django.core.cache import cache
+import logging
+
+logger = logging.getLogger(__name__)
+
+def fetch_wordpress_post_data(wp_connection, page_url):
+    """
+    WordPress se live post data fetch karta hai
+    """
+    try:
+        # Cache key banate hain for better performance
+        cache_key = f"wp_post_{hash(page_url)}"
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return cached_data
+        
+        # Extract post ID from URL
+        if not page_url:
+            return None
+            
+        # URL se post ID extract karte hain
+        url_parts = page_url.strip('/').split('/')
+        post_slug = url_parts[-1] if url_parts[-1] else url_parts[-2]
+        
+        # WordPress API endpoint - slug se data fetch karte hain
+        api_url = f"{wp_connection.site_url.rstrip('/')}/wp-json/wp/v2/posts?slug={post_slug}"
+        
+        headers = {
+            'Authorization': f'Basic {wp_connection.access_token}',
+            'Content-Type': 'application/json',
+        }
+        
+        logger.info(f"Fetching WordPress data from: {api_url}")
+        
+        response = requests.get(api_url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            posts_data = response.json()
+            if posts_data and len(posts_data) > 0:
+                post_data = posts_data[0]
+                result = {
+                    'title': post_data.get('title', {}).get('rendered', ''),
+                    'content': post_data.get('content', {}).get('rendered', ''),
+                    'excerpt': post_data.get('excerpt', {}).get('rendered', ''),
+                    'status': post_data.get('status', ''),
+                    'date': post_data.get('date', ''),
+                    'modified': post_data.get('modified', '')
+                }
+                
+                # 30 minutes ke liye cache karo
+                cache.set(cache_key, result, 1800)
+                return result
+        
+        logger.warning(f"WordPress API returned status: {response.status_code}")
+        return None
+            
+    except Exception as e:
+        logger.error(f"WordPress fetch error: {e}")
+        return None
