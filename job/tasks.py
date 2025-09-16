@@ -9,7 +9,10 @@ import requests
 import json
 from datetime import datetime
 import uuid
-
+from django.core.mail import EmailMultiAlternatives
+# Render HTML content
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 import logging
 
 logger = logging.getLogger(__name__)
@@ -121,6 +124,9 @@ def should_process_deal(deal_id, last_activity_time, connection):
     if not deal_id:
         return False
     
+    if not hasattr(connection, 'processed_deals'):
+        return True
+
     # If no last activity time, process it
     if not last_activity_time:
         return True
@@ -243,4 +249,213 @@ def send_to_n8n(deal_data):
             return False
     except requests.RequestException as e:
         print(f"Error sending to n8n: {str(e)}")
+        return False
+    
+
+
+def should_skip_due_to_rate_limit(connection):
+    """Check if we should skip this connection due to recent rate limiting"""
+    # Safe access to metadata field
+    if not hasattr(connection, 'metadata'):
+        return False
+    
+    rate_limit_info = connection.metadata.get('rate_limit', {})
+    retry_after = rate_limit_info.get('retry_after')
+    
+    if retry_after:
+        try:
+            retry_time = timezone.datetime.fromisoformat(retry_after)
+            if timezone.now() < retry_time:
+                return True
+        except (ValueError, TypeError):
+            pass
+    
+    return False
+
+def handle_rate_limit(connection):
+    """Handle rate limit by setting a retry time"""
+    # Safe access to metadata field
+    if not hasattr(connection, 'metadata'):
+        return
+    
+    retry_after = timezone.now() + timezone.timedelta(hours=1)
+    
+    metadata = connection.metadata or {}
+    metadata['rate_limit'] = {
+        'retry_after': retry_after.isoformat(),
+        'last_rate_limit': timezone.now().isoformat()
+    }
+    
+    connection.metadata = metadata
+    connection.save(update_fields=['metadata'])
+    print(f"Rate limit encountered. Will retry after {retry_after}")
+
+
+
+
+
+
+# crm/tasks.py
+@shared_task(bind=True, max_retries=3)
+def check_hubspot_closed_jobs(self):
+    """Celery task to check HubSpot for closed jobs and send emails directly"""
+    logger.info(f"🔄 HubSpot closed jobs check started.")
+    
+    hubspot_connections = CRMConnection.objects.filter(
+        crm_type__provider='hubspot',
+        is_connected=True
+    )
+    
+    results = []
+    
+    for connection in hubspot_connections:
+        if should_skip_due_to_rate_limit(connection):
+            print(f"Skipping {connection.connection_name} due to recent rate limit")
+            continue
+            
+        result = process_hubspot_connection(connection)
+        results.append({
+            'connection_id': connection.id,
+            'connection_name': connection.connection_name,
+            'result': result
+        })
+        
+        if result.get('error') == 'RATE_LIMIT_EXCEEDED':
+            handle_rate_limit(connection)
+            self.retry(countdown=3600, max_retries=3)
+    
+    return results
+
+# tasks.py
+def process_hubspot_connection(connection):
+    """Process a single HubSpot connection for closed deals with token handling"""
+    crm_service = get_crm_service(connection)
+    
+    # Check if connection is valid
+    if not connection.is_connected:
+        print(f"Skipping {connection.connection_name}: Connection not active")
+        return {"success": False, "error": "CONNECTION_DISCONNECTED", "processed_count": 0}
+    
+    # Get last check time
+    last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
+    
+    # Fetch closed deals
+    result = crm_service.get_closed_deals(last_check)
+    
+    if not result['success']:
+        error = result.get('error', 'Unknown error')
+        
+        if error == 'TOKEN_EXPIRED':
+            # Mark connection as disconnected
+            connection.is_connected = False
+            connection.save()
+            return {"success": False, "error": "TOKEN_EXPIRED", "processed_count": 0}
+        elif error == 'RATE_LIMIT_EXCEEDED':
+            return {"success": False, "error": "RATE_LIMIT_EXCEEDED"}
+        else:
+            return {"success": False, "error": error, "processed_count": 0}
+    
+    closed_deals = result['data']
+    processed_count = 0
+    
+    for deal in closed_deals:
+        deal_id = deal.get('id')
+        last_modified = deal.get('last_modified')
+        
+        if should_process_deal(deal_id, last_modified, connection):
+            success = process_hubspot_deal(deal, connection)
+            if success:
+                processed_count += 1
+    
+    # Update last sync time if we processed any deals
+    if processed_count > 0:
+        connection.last_sync = timezone.now()
+        connection.save(update_fields=['last_sync'])
+    
+    return {"success": True, "processed_count": processed_count, "total_count": len(closed_deals)}
+
+def process_hubspot_deal(deal, connection):
+    """Process a single HubSpot deal and send email directly"""
+    deal_id = deal.get('id')
+    
+    # Extract email using HubSpot service
+    crm_service = get_crm_service(connection)
+    email = crm_service.extract_email_from_deal(deal)
+    
+    if not email or not crm_service.is_valid_email(email):
+        print(f"Skipping deal {deal_id}: No valid email found")
+        return False
+    
+    # Get contact name
+    contact_name = ""
+    contacts = deal.get('contacts', [])
+    if contacts:
+        first_contact = contacts[0]
+        first_name = first_contact.get('first_name', '')
+        last_name = first_contact.get('last_name', '')
+        contact_name = f"{first_name} {last_name}".strip()
+    
+    # Create feedback record
+    feedback = ClientFeedback.objects.create(
+        email=email,
+        service_area=deal.get('deal_type', ''),
+        job_id=deal_id,
+        user=connection.user,
+        crm_connection=connection,
+        metadata={
+            'deal_name': deal.get('name', 'Unknown Deal'),
+            'amount': deal.get('amount', ''),
+            'close_date': deal.get('close_date', ''),
+            'contact_name': contact_name,
+            'description': deal.get('description', ''),
+            'contacts': deal.get('contacts', [])
+        }
+    )
+    
+    # Generate feedback URLs
+    base_url = settings.FRONTEND_URL.rstrip('/')
+    yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
+    no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+    
+    # Prepare context for email template
+    context = {
+        'yes_url': yes_url,
+        'no_url': no_url,
+        'job_id': deal_id,
+        'deal_name': deal.get('name', 'Unknown Deal'),
+        'from_email': settings.DEFAULT_FROM_EMAIL,
+        'to_email': email,
+        'contact_name': contact_name,
+        'current_date': timezone.now(),
+    }
+    
+    # Send email directly using Django's email system
+    return send_feedback_email(context)
+
+def send_feedback_email(context):
+    """Send feedback email using Django's email system"""
+    try:
+        # Render HTML content from template
+        html_content = render_to_string('emails/client_feedback.html', context)
+        
+        # Create plain text version
+        text_content = strip_tags(html_content)
+        
+        # Create the email
+        subject = f"Feedback Request for Your {context['deal_name']} Project"
+        
+        email_msg = EmailMultiAlternatives(
+            subject,
+            text_content,
+            settings.DEFAULT_FROM_EMAIL,
+            [context['to_email']]
+        )
+        email_msg.attach_alternative(html_content, "text/html")
+        email_msg.send()
+        
+        print(f"Successfully sent email to {context['to_email']}")
+        return True
+        
+    except Exception as e:
+        print(f"Failed to send email: {str(e)}")
         return False

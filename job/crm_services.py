@@ -26,6 +26,13 @@ class CRMServiceBase:
 
 class HubSpotService(CRMServiceBase):
     """HubSpot CRM service implementation"""
+
+    def __init__(self, connection):
+        super().__init__(connection)
+        self.api_base = "https://api.hubapi.com"
+    
+    def get_api_base_url(self):
+        return self.api_base
     
     def verify_connection(self):
         """Verify HubSpot connection using OAuth token"""
@@ -38,6 +45,234 @@ class HubSpotService(CRMServiceBase):
             return False
         except requests.RequestException:
             return False
+    def refresh_token(self):
+        """Refresh HubSpot OAuth token"""
+        if not self.connection.oauth_refresh_token:
+            return False
+        
+        token_url = "https://api.hubapi.com/oauth/v1/token"
+        
+        data = {
+            'grant_type': 'refresh_token',
+            'client_id': settings.HUBSPOT_CLIENT_ID,
+            'client_secret': settings.HUBSPOT_CLIENT_SECRET,
+            'refresh_token': self.connection.oauth_refresh_token
+        }
+        
+        try:
+            response = requests.post(token_url, data=data)
+            if response.status_code == 200:
+                token_data = response.json()
+                self.connection.oauth_access_token = token_data['access_token']
+                self.connection.oauth_refresh_token = token_data.get('refresh_token', self.connection.oauth_refresh_token)
+                self.connection.oauth_token_expiry = timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+                self.connection.save()
+                return True
+        except requests.RequestException:
+            pass
+        
+        return False
+    
+    def ensure_valid_token(self):
+        """Ensure we have a valid access token"""
+        if self.connection.is_token_expired():
+            success = self.refresh_token()
+            if not success:
+                # If refresh fails, mark as disconnected
+                self.connection.is_connected = False
+                self.connection.save()
+                return False
+        return True
+    def get_closed_deals(self, last_check_time=None):
+        """Fetch closed deals from HubSpot with proper token handling"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Build properties array
+        properties = ["dealname", "dealstage", "amount", "closedate", "dealtype", "description", "hs_lastmodifieddate"]
+        
+        # Build filter for closed deals
+        filter_groups = [{
+            "filters": [{
+                "propertyName": "dealstage",
+                "operator": "IN",
+                "values": ["closedwon", "closedlost"]
+            }]
+        }]
+        
+        # Add time filter if provided
+        if last_check_time:
+            last_check_ms = int(last_check_time.timestamp() * 1000)
+            filter_groups[0]["filters"].append({
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": last_check_ms
+            })
+        
+        url = f"{self.api_base}/crm/v3/objects/deals/search"
+        
+        # CORRECTED payload structure - use propertyName instead of property
+        payload = {
+            "properties": properties,
+            "filterGroups": filter_groups,
+            "sorts": [{
+                "propertyName": "hs_lastmodifieddate",  # FIXED: propertyName instead of property
+                "direction": "ASCENDING"
+            }],
+            "limit": 100
+        }
+        
+        print(f"HubSpot API request: {json.dumps(payload, indent=2)}")  # Debug
+        
+        try:
+            response = requests.post(url, headers=headers, json=payload)
+            
+            if response.status_code == 200:
+                data = response.json()
+                deals = data.get("results", [])
+                print(f"Found {len(deals)} closed deals in HubSpot")
+                
+                # Enrich deals with contact emails
+                enriched_deals = []
+                for deal in deals:
+                    enriched_deal = self.enrich_deal_with_contacts(deal, headers)
+                    enriched_deals.append(enriched_deal)
+                
+                return {"success": True, "data": enriched_deals}
+            
+            elif response.status_code == 401:  # Token expired
+                print("HubSpot token expired. Attempting refresh...")
+                if self.refresh_token():
+                    # Retry with new token
+                    return self.get_closed_deals(last_check_time)
+                else:
+                    self.connection.is_connected = False
+                    self.connection.save()
+                    return {"success": False, "error": "TOKEN_EXPIRED"}
+            
+            elif response.status_code == 429:  # Rate limit
+                return {"success": False, "error": "RATE_LIMIT_EXCEEDED"}
+            
+            else:
+                error_msg = f"HubSpot Error {response.status_code}: {response.text}"
+                print(f"HubSpot API error: {error_msg}")
+                return {"success": False, "error": error_msg}
+                
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+
+    def enrich_deal_with_contacts(self, deal, headers):
+        """Enrich deal with contact information including emails"""
+        deal_id = deal.get("id")
+        properties = deal.get("properties", {})
+        
+        enriched_deal = {
+            "id": deal_id,
+            "name": properties.get("dealname"),
+            "stage": properties.get("dealstage"),
+            "amount": properties.get("amount"),
+            "close_date": properties.get("closedate"),
+            "deal_type": properties.get("dealtype"),
+            "description": properties.get("description"),
+            "last_modified": properties.get("hs_lastmodifieddate"),
+            "contacts": [],
+            "emails": []
+        }
+        
+        # Get associated contacts using the associations endpoint
+        deal_url = f"{self.api_base}/crm/v3/objects/deals/{deal_id}"
+        params = {
+            "properties": "dealname,dealstage",
+            "associations": "contacts"
+        }
+        
+        try:
+            response = requests.get(deal_url, headers=headers, params=params)
+            if response.status_code == 200:
+                deal_data = response.json()
+                associations = deal_data.get("associations", {})
+                
+                # Get contact associations
+                contact_associations = associations.get("contacts", {}).get("results", [])
+                
+                for assoc in contact_associations:
+                    contact_id = assoc.get("id")
+                    if contact_id:
+                        contact_data = self.get_contact_details(contact_id, headers)
+                        if contact_data:
+                            enriched_deal["contacts"].append(contact_data)
+                            
+                            # Collect emails for easy access
+                            email = contact_data.get("email")
+                            if email and "@" in email:
+                                enriched_deal["emails"].append(email)
+        
+        except requests.RequestException:
+            pass
+        
+        return enriched_deal
+    
+    def get_contact_details(self, contact_id, headers):
+        """Get detailed contact information"""
+        url = f"{self.api_base}/crm/v3/objects/contacts/{contact_id}"
+        
+        params = {
+            "properties": "firstname,lastname,email,phone,company,lifecyclestage",
+            "archived": "false"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code == 200:
+                contact_data = response.json()
+                properties = contact_data.get("properties", {})
+                
+                return {
+                    "id": contact_id,
+                    "first_name": properties.get("firstname"),
+                    "last_name": properties.get("lastname"),
+                    "email": properties.get("email"),
+                    "phone": properties.get("phone"),
+                    "company": properties.get("company"),
+                    "lifecycle_stage": properties.get("lifecyclestage")
+                }
+        except requests.RequestException:
+            pass
+        
+        return None
+    
+    def extract_email_from_deal(self, deal):
+        """Extract email from HubSpot deal data"""
+        emails = deal.get("emails", [])
+        if emails:
+            return emails[0]  # Return first email found
+        
+        # Fallback: check contacts
+        contacts = deal.get("contacts", [])
+        for contact in contacts:
+            email = contact.get("email")
+            if email and "@" in email:
+                return email
+        
+        return ""
+    
+    def is_valid_email(self, email):
+        """Check if email is valid"""
+        if not email or "@" not in email:
+            return False
+        
+        # Filter out common placeholder emails
+        invalid_domains = ['noemail.invalid', 'example.com', 'test.com', 'placeholder.com']
+        for domain in invalid_domains:
+            if domain in email:
+                return False
+        
+        return True
     
     def create_job(self, job_data):
         """Create a deal in HubSpot"""
