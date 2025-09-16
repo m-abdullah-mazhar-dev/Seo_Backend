@@ -365,6 +365,7 @@ class CRMConnection(models.Model):
     # Connection status
     is_connected = models.BooleanField(default=False)
     last_sync = models.DateTimeField(blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
     processed_deals = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -372,7 +372,7 @@ class OAuthInitAPIView(APIView):
             params = {
                 'client_id': settings.HUBSPOT_CLIENT_ID,
                 'redirect_uri': redirect_uri,
-                'scope': 'crm.objects.deals.read crm.objects.deals.write',
+                'scope': 'crm.objects.deals.read crm.objects.deals.write crm.objects.contacts.read',
                 'state': state,
             }
             

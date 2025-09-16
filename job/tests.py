@@ -1,11 +1,7 @@
 import requests
 
 
-def fetch_closed_deals(access_token, limit=10):
-    """
-    Fetch closed deals (closedwon / closedlost) with customer details from HubSpot.
-    Requires a valid OAuth access token.
-    """
+def fetch_closed_deals(access_token, limit=50):
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
@@ -14,6 +10,7 @@ def fetch_closed_deals(access_token, limit=10):
     deals_url = "https://api.hubapi.com/crm/v3/objects/deals"
     params = {
         "properties": "dealname,dealstage,amount,closedate",
+        "associations": "contacts",   # fetch contacts in same response
         "limit": limit
     }
 
@@ -29,7 +26,6 @@ def fetch_closed_deals(access_token, limit=10):
         deal_props = deal.get("properties", {})
         deal_stage = deal_props.get("dealstage")
 
-        # Filter only closed deals
         if deal_stage in ["closedwon", "closedlost"]:
             deal_info = {
                 "deal_id": deal.get("id"),
@@ -40,37 +36,44 @@ def fetch_closed_deals(access_token, limit=10):
                 "contacts": []
             }
 
-            # Get associated contacts for this deal
-            associations_url = f"https://api.hubapi.com/crm/v3/objects/deals/{deal.get('id')}/associations/contacts"
-            assoc_resp = requests.get(associations_url, headers=headers)
+            # ✅ correctly get associated contacts
+            assoc_contacts = (
+                deal.get("associations", {})
+                    .get("contacts", {})
+                    .get("results", [])
+            )
 
-            if assoc_resp.status_code == 200:
-                assoc_data = assoc_resp.json().get("results", [])
-                for assoc in assoc_data:
-                    contact_id = assoc.get("id")
+            if not assoc_contacts:
+                print(f"No contacts found for deal {deal.get('id')}")
 
-                    # Fetch contact details
-                    contact_url = f"https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}"
-                    contact_params = {"properties": "firstname,lastname,email,phone"}
-                    contact_resp = requests.get(contact_url, headers=headers, params=contact_params)
+            for assoc in assoc_contacts:
+                contact_id = assoc.get("id")
+                if not contact_id:
+                    continue
 
-                    if contact_resp.status_code == 200:
-                        contact_props = contact_resp.json().get("properties", {})
-                        deal_info["contacts"].append({
-                            "firstname": contact_props.get("firstname"),
-                            "lastname": contact_props.get("lastname"),
-                            "email": contact_props.get("email"),
-                            "phone": contact_props.get("phone"),
-                        })
+                # fetch contact details
+                contact_url = f"https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}"
+                contact_params = {"properties": "firstname,lastname,email,phone"}
+                contact_resp = requests.get(contact_url, headers=headers, params=contact_params)
+
+                if contact_resp.status_code == 200:
+                    contact_props = contact_resp.json().get("properties", {})
+                    deal_info["contacts"].append({
+                        "firstname": contact_props.get("firstname"),
+                        "lastname": contact_props.get("lastname"),
+                        "email": contact_props.get("email"),
+                        "phone": contact_props.get("phone"),
+                    })
+                else:
+                    print(f"Error fetching contact {contact_id}: {contact_resp.text}")
 
             closed_deals.append(deal_info)
 
     return closed_deals
 
 
-# Example usage
 if __name__ == "__main__":
-    access_token = "YOUR_OAUTH_ACCESS_TOKEN"
-    deals = fetch_closed_deals(access_token)
+    access_token = "CJCit6KVMxIRQlNQMl8kQEwrAgQACAkWPgEYz8-XdCCt_LEnKOOt3QgyFBuX-KyW1m-aPMgbodOTQykJSOm0OhtCU1AyXyRATCsCDgAIGQZxfgE_AQEBAQElAQFCFLZLpOiodwkajZMJLsjrkpr0HRMBSgNuYTJSAFoAYABorfyxJ3AAeAA"
+    deals = fetch_closed_deals(access_token, limit=20)
     for d in deals:
         print(d)
