@@ -47,7 +47,7 @@ def get_or_create_category(wp_conn, slug, name=None, description=""):
 
 import re
 
-def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload, job_task ):
+def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload):
     wp_conn = wp_conn
 
         # Prefer AI request payload if available (more reliable than free-text AI response)
@@ -176,13 +176,124 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload, jo
     post_id = response_data.get('id')
 
     # Update the JobTask with the URL and publish date
-    job_task.wp_page_url = page_url
-    job_task.published_date = timezone.now()
-    job_task.save()
+    # job_task.wp_page_url = page_url
+    # job_task.published_date = timezone.now()
+    # job_task.save()
 
     logger.info(f"✅ Job Post uploaded to WordPress. URL: {page_url}")
+
     return page_url
 
+
+
+
+
+
+
+# from .views import map_job_form_to_api_payload
+
+# def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload=None):
+#     # Use api_payload if provided, otherwise fallback to job_form data
+#     if not api_payload:
+#         api_payload = map_job_form_to_api_payload(job_form)
+    
+#     route = api_payload.get("route", "OTR")
+#     position = api_payload.get("position", "Driver")
+#     equipment = api_payload.get("hauling", "General Freight")
+#     pay_structure = api_payload.get("pay_structure", "Pay Not Specified")
+#     pay_value = api_payload.get("pay_type", "N/A")
+    
+#     title = f"{route.upper()} {position} – {equipment} – {pay_structure} – {pay_value}"
+#     map_html = generate_map_html(api_payload)
+
+#     # POST-PROCESSING: Clean up the HTML content for local routes
+#     hiring_area = api_payload.get("hiring_area", {})
+#     route_type = hiring_area.get("type", "").lower()
+
+#     if route_type == "local":
+#         html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
+#     elif route_type == "otr":
+#         html_content = html_content.replace('States:', '')
+
+#     # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
+#     cost_structure = api_payload.get("cost_structure")
+#     if cost_structure:
+#         cost_html = f"""
+#         <h2>{cost_structure['title']}</h2>
+#         """
+        
+#         # Add service fee info
+#         if cost_structure.get("service_fee"):
+#             cost_html += f"<p><strong>{cost_structure['service_fee']} COMPANY SERVICE FEE INCLUDES:</strong></p>"
+#             if cost_structure.get("service_fee_includes"):
+#                 cost_html += "<ul>"
+#                 for item in cost_structure["service_fee_includes"]:
+#                     cost_html += f"<li>{item}</li>"
+#                 cost_html += "</ul>"
+        
+#         # Add weekly expenses
+#         if cost_structure.get("weekly_expenses"):
+#             cost_html += "<p><strong>WEEKLY EXPENSES:</strong></p><ul>"
+#             for expense in cost_structure["weekly_expenses"]:
+#                 cost_html += f"<li>{expense}</li>"
+#             cost_html += "</ul>"
+        
+#         # Insert cost structure after DRIVER BENEFITS section
+#         benefits_pattern = "DRIVER BENEFITS:"
+#         benefits_index = html_content.find(benefits_pattern)
+        
+#         if benefits_index != -1:
+#             # Find the end of the DRIVER BENEFITS section
+#             import re
+#             next_section_match = re.search(r'<br>[A-Z\s]+:', html_content[benefits_index:])
+            
+#             if next_section_match:
+#                 insert_index = benefits_index + next_section_match.start()
+#                 html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#             else:
+#                 ul_end_pattern = "</ul>"
+#                 ul_end_index = html_content.find(ul_end_pattern, benefits_index)
+                
+#                 if ul_end_index != -1:
+#                     insert_index = ul_end_index + len(ul_end_pattern)
+#                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#                 else:
+#                     insert_index = benefits_index + len(benefits_pattern)
+#                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#         else:
+#             html_content += cost_html
+
+#     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
+
+#     slug = slugify(title)
+#     post_data = {
+#         "title": title,
+#         "slug": slug,
+#         "content": f"<div>{html_content}</div>{map_html}",
+#         "status": "publish",
+#         "categories": [category_id], 
+#     }
+
+#     headers = {
+#         'Authorization': f'Basic {wp_conn.access_token}',
+#         'Content-Type': 'application/json',
+#     }
+
+#     response = requests.post(
+#         f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts",
+#         headers=headers,
+#         json=post_data
+#     )
+
+#     if response.status_code not in [200, 201]:
+#         raise Exception(f"WordPress upload failed: {response.text}")
+    
+#     response_data = response.json()
+#     page_url = response_data.get('link')
+    
+#     logger.info(f"✅ Job Post uploaded to WordPress. URL: {page_url}")
+
+#     return page_url
 
 
 def generate_map_html(api_payload):
@@ -658,57 +769,101 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def fetch_wordpress_post_data(wp_connection, page_url):
+# def fetch_wordpress_post_data(wp_connection, page_url):
+#     """
+#     WordPress se live post data fetch karta hai
+#     """
+#     try:
+#         # Cache key banate hain for better performance
+#         cache_key = f"wp_post_{hash(page_url)}"
+#         cached_data = cache.get(cache_key)
+#         if cached_data:
+#             return cached_data
+        
+#         # Extract post ID from URL
+#         if not page_url:
+#             return None
+            
+#         # URL se post ID extract karte hain
+#         url_parts = page_url.strip('/').split('/')
+#         post_slug = url_parts[-1] if url_parts[-1] else url_parts[-2]
+        
+#         # WordPress API endpoint - slug se data fetch karte hain
+#         api_url = f"{wp_connection.site_url.rstrip('/')}/wp-json/wp/v2/posts?slug={post_slug}"
+        
+#         headers = {
+#             'Authorization': f'Basic {wp_connection.access_token}',
+#             'Content-Type': 'application/json',
+#         }
+        
+#         logger.info(f"Fetching WordPress data from: {api_url}")
+        
+#         response = requests.get(api_url, headers=headers, timeout=15)
+        
+#         if response.status_code == 200:
+#             posts_data = response.json()
+#             if posts_data and len(posts_data) > 0:
+#                 post_data = posts_data[0]
+#                 result = {
+#                     'title': post_data.get('title', {}).get('rendered', ''),
+#                     'content': post_data.get('content', {}).get('rendered', ''),
+#                     'excerpt': post_data.get('excerpt', {}).get('rendered', ''),
+#                     'status': post_data.get('status', ''),
+#                     'date': post_data.get('date', ''),
+#                     'modified': post_data.get('modified', '')
+#                 }
+                
+#                 # 30 minutes ke liye cache karo
+#                 cache.set(cache_key, result, 1800)
+#                 return result
+        
+#         logger.warning(f"WordPress API returned status: {response.status_code}")
+#         return None
+            
+#     except Exception as e:
+#         logger.error(f"WordPress fetch error: {e}")
+#         return None
+
+
+# utils.py
+import requests
+from django.utils.html import strip_tags
+
+def fetch_wordpress_post_data(wp_connection, post_url):
     """
-    WordPress se live post data fetch karta hai
+    Fetch WordPress post data using the REST API
     """
     try:
-        # Cache key banate hain for better performance
-        cache_key = f"wp_post_{hash(page_url)}"
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            return cached_data
+        # Extract post ID or slug from URL
+        from urllib.parse import urlparse
+        parsed_url = urlparse(post_url)
+        path_parts = parsed_url.path.strip('/').split('/')
         
-        # Extract post ID from URL
-        if not page_url:
+        if not path_parts:
             return None
-            
-        # URL se post ID extract karte hain
-        url_parts = page_url.strip('/').split('/')
-        post_slug = url_parts[-1] if url_parts[-1] else url_parts[-2]
         
-        # WordPress API endpoint - slug se data fetch karte hain
-        api_url = f"{wp_connection.site_url.rstrip('/')}/wp-json/wp/v2/posts?slug={post_slug}"
+        # Try to get by slug (last part of URL)
+        slug = path_parts[-1]
         
         headers = {
             'Authorization': f'Basic {wp_connection.access_token}',
             'Content-Type': 'application/json',
         }
         
-        logger.info(f"Fetching WordPress data from: {api_url}")
-        
-        response = requests.get(api_url, headers=headers, timeout=15)
+        # Try to get post by slug
+        response = requests.get(
+            f"{wp_connection.site_url.rstrip('/')}/wp-json/wp/v2/posts?slug={slug}",
+            headers=headers,
+            timeout=10
+        )
         
         if response.status_code == 200:
-            posts_data = response.json()
-            if posts_data and len(posts_data) > 0:
-                post_data = posts_data[0]
-                result = {
-                    'title': post_data.get('title', {}).get('rendered', ''),
-                    'content': post_data.get('content', {}).get('rendered', ''),
-                    'excerpt': post_data.get('excerpt', {}).get('rendered', ''),
-                    'status': post_data.get('status', ''),
-                    'date': post_data.get('date', ''),
-                    'modified': post_data.get('modified', '')
-                }
-                
-                # 30 minutes ke liye cache karo
-                cache.set(cache_key, result, 1800)
-                return result
+            posts = response.json()
+            if posts and len(posts) > 0:
+                return posts[0]
         
-        logger.warning(f"WordPress API returned status: {response.status_code}")
         return None
-            
+        
     except Exception as e:
-        logger.error(f"WordPress fetch error: {e}")
+        print(f"Error fetching WordPress post data: {e}")
         return None
