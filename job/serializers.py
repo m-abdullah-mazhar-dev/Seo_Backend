@@ -328,3 +328,14 @@ class JobTemplateSerializer(serializers.ModelSerializer):
     def get_total_applicants(self, obj):
         # You can implement applicant counting logic here
         return 0
+
+# serializers.py
+from rest_framework import serializers
+from .models import FeedbackFormResponse
+
+class FeedbackFormResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedbackFormResponse
+        fields = '__all__'
+        read_only_fields = ['feedback', 'created_at']
+    

@@ -22,6 +22,13 @@ urlpatterns = [
 
     path('debug/zoho-token/<int:connection_id>/', DebugZohoTokenView.as_view(), name='debug-zoho-token'),
     
+    path('feedback/form/<uuid:token>/', feedback_form_view, name='feedback-form'),
+    path('api/feedback/form/<uuid:token>/submit/', submit_feedback_form, name='submit-feedback-form'),
+
+    path('feedback/form-responses/', AllFeedbackFormResponsesAPIView.as_view(), name='all-feedback-form-responses'),
+    path('feedback/form-responses/<int:response_id>/', FeedbackFormResponseByIdAPIView.as_view(), name='feedback-form-response-by-id'),
+
+
     # Webhook and feedback endpoints
     path('webhook/job-closed/<uuid:secret_token>/',  CRMWebhookAPIView.as_view(), name='crm-webhook'),
     path('feedback/<uuid:token>/<str:answer>/',  FeedbackAPI.as_view(), name='api-feedback'),

@@ -8,7 +8,7 @@ from job.models import *
 from job.utility import convert_template_to_html, create_initial_job_blog_task, generate_structured_job_html, map_cost_structure, process_job_template_html, sync_job_keywords, upload_job_post_to_wordpress
 from seo_services.models import BusinessDetails, WordPressConnection
 from seo_services.upload_blog_to_wp import upload_blog_to_wordpress
-from .serializers import JobBlogSerializer, JobOnboardingFormSerializer, JobTaskSerializer
+from .serializers import FeedbackFormResponseSerializer, JobBlogSerializer, JobOnboardingFormSerializer, JobTaskSerializer
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import AllowAny
@@ -678,6 +678,9 @@ class CRMWebhookAPIView(APIView):
         
         return Response({"status": "email sent"})
 
+from django.http import HttpResponseRedirect
+
+
 class FeedbackAPI(APIView):
     """Handle feedback responses"""
     permission_classes = [AllowAny]
@@ -709,14 +712,148 @@ class FeedbackAPI(APIView):
                 location = BusinessLocation.objects.filter(onboarding_form=onboarding_form).first()
                 if location:
                     response_data["review_url"] = location.location_url
+            return Response(response_data, status=status.HTTP_200_OK)
         else:
-            form = BusinessDetails.objects.filter(user = feedback.user).first()
-            print("form------------",form)
-            if form:
-                response_data["feedback_url"] = form.form_url
-            # response_data["feedback_url"] = "https://your-feedback-form.com"
+            # form = BusinessDetails.objects.filter(user = feedback.user).first()
+            # print("form------------",form)
+            # if form:
+                # response_data["feedback_url"] = form.form_url
+            # response_data["feedback_url"] = f"{settings.FRONTEND_URL}job/feedback/form/{token}/"
+            return HttpResponseRedirect(f"{settings.FRONTEND_URL}job/feedback/form/{token}/")
         
-        return Response(response_data, status=status.HTTP_200_OK)
+        # return Response(response_data, status=status.HTTP_200_OK)
+    
+
+# views.py
+from rest_framework import status
+from rest_framework.decorators import api_view, renderer_classes
+from rest_framework.renderers import TemplateHTMLRenderer, JSONRenderer
+@api_view(['GET'])
+@renderer_classes([TemplateHTMLRenderer])
+def feedback_form_view(request, token):
+    """Render feedback form for users who clicked No"""
+    feedback = get_object_or_404(ClientFeedback, token=token)
+    
+    context = {
+        'token': token,
+        'email': feedback.email,
+        'job_id': feedback.job_id,
+        'service_area': feedback.service_area
+    }
+    
+    return Response(context, template_name='feedback/feedback_form.html')
+# views.py
+@api_view(['POST'])
+@renderer_classes([JSONRenderer])
+def submit_feedback_form(request, token):
+    """Handle feedback form submission"""
+    feedback = get_object_or_404(ClientFeedback, token=token)
+    
+    # Update the main feedback record
+    feedback.is_satisfied = False
+    feedback.save()
+    
+    # Create form response - pass the feedback instance, not just ID
+    form_data = request.data.copy()
+    
+    # Convert checkbox values from string to boolean
+    if 'would_recommend' in form_data:
+        form_data['would_recommend'] = form_data['would_recommend'].lower() == 'true'
+    
+    if 'contact_permission' in form_data:
+        form_data['contact_permission'] = form_data['contact_permission'].lower() == 'true'
+    
+    serializer = FeedbackFormResponseSerializer(data=form_data)
+    
+    if serializer.is_valid():
+        # Save with the feedback instance
+        serializer.save(feedback=feedback)
+        return Response({
+            'success': True,
+            'message': 'Thank you for your feedback!'
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response({
+        'success': False,
+        'errors': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class AllFeedbackFormResponsesAPIView(APIView):
+    """Get ALL feedback form responses (Admin only)"""
+    permission_classes = [IsAuthenticated]  # Only admin can access
+    
+    def get(self, request):
+        # Get all feedback form responses with related feedback data
+        form_responses = FeedbackFormResponse.objects.all().select_related('feedback')
+        
+        # Serialize the data
+        data = []
+        for response in form_responses:
+            data.append({
+                'id': response.id,
+                'satisfaction_level': response.satisfaction_level,
+                'satisfaction_level_display': response.get_satisfaction_level_display(),
+                'issues_faced': response.issues_faced,
+                'suggestions': response.suggestions,
+                'would_recommend': response.would_recommend,
+                'contact_permission': response.contact_permission,
+                'created_at': response.created_at,
+                
+                # Feedback details
+                'feedback_id': response.feedback.id,
+                'email': response.feedback.email,
+                'job_id': response.feedback.job_id,
+                'service_area': response.feedback.service_area,
+                'is_satisfied': response.feedback.is_satisfied,
+                'feedback_created_at': response.feedback.created_at,
+                'user_id': response.feedback.user.id if response.feedback.user else None,
+                'user_email': response.feedback.user.email if response.feedback.user else None,
+            })
+        
+        return Response({
+            'count': len(data),
+            'results': data
+        })
+
+class FeedbackFormResponseByIdAPIView(APIView):
+    """Get specific feedback form response by ID (Admin only)"""
+    permission_classes = [IsAuthenticated]  # Only admin can access
+    
+    def get(self, request, response_id):
+        try:
+            response = FeedbackFormResponse.objects.select_related('feedback').get(id=response_id)
+            
+            data = {
+                'id': response.id,
+                'satisfaction_level': response.satisfaction_level,
+                'satisfaction_level_display': response.get_satisfaction_level_display(),
+                'issues_faced': response.issues_faced,
+                'suggestions': response.suggestions,
+                'would_recommend': response.would_recommend,
+                'contact_permission': response.contact_permission,
+                'created_at': response.created_at,
+                
+                # Feedback details
+                'feedback_id': response.feedback.id,
+                'email': response.feedback.email,
+                'job_id': response.feedback.job_id,
+                'service_area': response.feedback.service_area,
+                'is_satisfied': response.feedback.is_satisfied,
+                'feedback_created_at': response.feedback.created_at,
+                'user_id': response.feedback.user.id if response.feedback.user else None,
+                'user_email': response.feedback.user.email if response.feedback.user else None,
+                'crm_connection': response.feedback.crm_connection.connection_name if response.feedback.crm_connection else None,
+            }
+            
+            return Response(data)
+            
+        except FeedbackFormResponse.DoesNotExist:
+            return Response(
+                {'error': 'Feedback form response not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 # class CRMJobCreateAPIView(APIView):
 #     """Create a job in the connected CRM"""
