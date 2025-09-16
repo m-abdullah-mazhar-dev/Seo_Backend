@@ -1605,24 +1605,14 @@ class MyJobPostsView(APIView):
             ).order_by("-created_at")
             
             # Pagination
-            paginator = Paginator(job_templates, 10)  # 10 items per page
-            page_number = request.GET.get('page')
-            page_obj = paginator.get_page(page_number)
+            paginator = JobPostsPagination()
+            result_page = paginator.paginate_queryset(job_templates, request)
+            serializer = JobTemplateSerializer(result_page, many=True)
+
+            # ✅ send serializer.data directly
+            return paginator.get_paginated_response(serializer.data)
             
-            serializer = JobTemplateSerializer(page_obj, many=True)
-            
-            return Response({
-                "success": True,
-                "message": "Job posts retrieved successfully.",
-                "data": {
-                    "results": serializer.data,
-                    "count": paginator.count,
-                    "total_pages": paginator.num_pages,
-                    "current_page": page_obj.number,
-                    "has_next": page_obj.has_next(),
-                    "has_previous": page_obj.has_previous(),
-                }
-            }, status=status.HTTP_200_OK)
+        
 
         # Single job post retrieval
         job_template = JobTemplate.objects.filter(
