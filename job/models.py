@@ -467,3 +467,29 @@ class JobTemplate(models.Model):
             if path_parts:
                 self.wp_page_slug = path_parts[-1]
         super().save(*args, **kwargs)
+
+
+# models.py
+class FeedbackFormResponse(models.Model):
+    SATISFACTION_CHOICES = [
+        ('very_dissatisfied', 'Very Dissatisfied'),
+        ('dissatisfied', 'Dissatisfied'),
+        ('neutral', 'Neutral'),
+        ('satisfied', 'Satisfied'),
+        ('very_satisfied', 'Very Satisfied'),
+    ]
+    
+    feedback = models.ForeignKey(ClientFeedback, on_delete=models.CASCADE, related_name='form_responses')
+    satisfaction_level = models.CharField(max_length=20, choices=SATISFACTION_CHOICES)
+    issues_faced = models.TextField(blank=True, null=True)
+    suggestions = models.TextField(blank=True, null=True)
+    would_recommend = models.BooleanField(null=True)
+    contact_permission = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def get_satisfaction_level_display(self):
+        """Get human-readable satisfaction level"""
+        return dict(self.SATISFACTION_CHOICES).get(self.satisfaction_level, self.satisfaction_level)
+    
+    def __str__(self):
+        return f"Feedback from {self.feedback.email} - {self.satisfaction_level}"

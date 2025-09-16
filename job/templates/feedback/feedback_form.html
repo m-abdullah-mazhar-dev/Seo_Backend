@@ -1,0 +1,118 @@
+<!-- templates/feedback/feedback_form.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Share Your Feedback</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f4f4f4; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
+        textarea { height: 100px; resize: vertical; }
+        button { background: #dc3545; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; width: 100%; }
+        button:hover { background: #c82333; }
+        .rating { display: flex; justify-content: space-between; margin: 10px 0; }
+        .rating label { flex: 1; text-align: center; padding: 10px; border: 1px solid #ddd; margin: 0 5px; cursor: pointer; border-radius: 5px; }
+        .rating input[type="radio"] { display: none; }
+        .rating input[type="radio"]:checked + label { background: #dc3545; color: white; border-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>We Value Your Feedback</h1>
+        <p>Thank you for helping us improve our services. Please share your experience with us.</p>
+        
+        <form id="feedbackForm">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label>How satisfied were you with our service?</label>
+                <div class="rating">
+                    <input type="radio" id="very_dissatisfied" name="satisfaction_level" value="very_dissatisfied">
+                    <label for="very_dissatisfied">😠</label>
+                    
+                    <input type="radio" id="dissatisfied" name="satisfaction_level" value="dissatisfied">
+                    <label for="dissatisfied">😕</label>
+                    
+                    <input type="radio" id="neutral" name="satisfaction_level" value="neutral">
+                    <label for="neutral">😐</label>
+                    
+                    <input type="radio" id="satisfied" name="satisfaction_level" value="satisfied">
+                    <label for="satisfied">🙂</label>
+                    
+                    <input type="radio" id="very_satisfied" name="satisfaction_level" value="very_satisfied">
+                    <label for="very_satisfied">😄</label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="issues_faced">What issues did you face? (Optional)</label>
+                <textarea id="issues_faced" name="issues_faced" placeholder="Please describe any problems you encountered..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="suggestions">How can we improve? (Optional)</label>
+                <textarea id="suggestions" name="suggestions" placeholder="Your suggestions are valuable to us..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="would_recommend">Would you recommend us to others?</label>
+                <select id="would_recommend" name="would_recommend">
+                    <option value="">Please select</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="contact_permission" value="true">
+                    I'm open to being contacted for follow-up questions
+                </label>
+            </div>
+
+            <button type="submit">Submit Feedback</button>
+        </form>
+
+        <div id="successMessage" style="display: none; text-align: center; padding: 20px; background: #d4edda; color: #155724; border-radius: 5px; margin-top: 20px;">
+            <h3>Thank You!</h3>
+            <p>Your feedback has been submitted successfully.</p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('feedbackForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData.entries());
+            
+            try {
+                const response = await fetch(`/job/api/feedback/form/{{ token }}/submit/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('feedbackForm').style.display = 'none';
+                    document.getElementById('successMessage').style.display = 'block';
+                } else {
+                    alert('Error submitting feedback. Please try again.');
+                }
+            } catch (error) {
+                alert('Error submitting feedback. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>
