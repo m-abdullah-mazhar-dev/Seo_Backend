@@ -11,8 +11,9 @@ from django.utils import timezone
 
 class JobOnboardingForm(models.Model):
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="jobonboardingform")
-    # -------------------- Basic Company Details --------------------
+    # user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="jobonboardingform")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="jobonboardingforms")
+    # -------------------- Basic Company Details -------------------- 
     company_name = models.CharField(max_length=255)
     company_website = models.URLField(blank=True, null=True)
     company_address = models.TextField()
@@ -412,3 +413,56 @@ class OAuthState(models.Model):
     
     def is_expired(self):
         return timezone.now() > self.created_at + timedelta(minutes=10)
+    
+
+
+# models.py
+from django.db import models
+from django.utils.text import slugify
+
+class JobTemplate(models.Model):
+    """
+    Stores AI-generated job templates and WordPress integration details
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="job_templates")
+    job_onboarding = models.ForeignKey(JobOnboardingForm, on_delete=models.CASCADE, related_name="templates")
+    
+    # AI Response Data
+    ai_request_payload = models.JSONField(default=dict, null=True, blank=True)
+    ai_response_payload = models.JSONField(default=dict, null=True, blank=True)
+    generated_content = models.TextField(blank=True, null=True)
+    
+    # WordPress Integration
+    wp_page_id = models.IntegerField(null=True, blank=True)
+    wp_page_url = models.URLField(blank=True, null=True)
+    wp_page_slug = models.SlugField(max_length=200, blank=True, null=True)
+    wp_post_data = models.JSONField(default=dict, null=True, blank=True)
+    
+    # Status and Timestamps
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    published_date = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.job_onboarding.company_name} - {self.status}"
+    
+    def save(self, *args, **kwargs):
+        if self.wp_page_url and not self.wp_page_slug:
+            # Extract slug from URL
+            from urllib.parse import urlparse
+            parsed_url = urlparse(self.wp_page_url)
+            path_parts = parsed_url.path.strip('/').split('/')
+            if path_parts:
+                self.wp_page_slug = path_parts[-1]
+        super().save(*args, **kwargs)

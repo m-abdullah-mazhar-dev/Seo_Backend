@@ -22,8 +22,41 @@ from django.utils.html import strip_tags
 from django.utils import timezone
 import logging
 from bs4 import BeautifulSoup
+from rest_framework.views import APIView
 import re
 logger = logging.getLogger(__name__)
+
+
+
+
+class SubmitJobPageAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        page_url = request.data.get("page_url")
+
+        if not page_url:
+            return Response({"error": "Page URL is required."}, status=400)
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from django.shortcuts import get_object_or_404
+
+
+    
+
+#
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+
+from .models import JobOnboardingForm, JobPage
+from .serializers import JobOnboardingFormSerializer
+# from .tasks import run_job_template_generation, create_initial_job_tasks
+# from .wordpress import generate_structured_job_html, upload_job_post_to_wordpress
 
 
 class CreateJobOnboardingFormAPIView(APIView):
@@ -32,62 +65,66 @@ class CreateJobOnboardingFormAPIView(APIView):
     def post(self, request, format=None):
         user = request.user
 
-        if JobOnboardingForm.objects.filter(user=user).exists():
-            return Response({
-                "message": "Job onboarding form already exists for this user."
-            }, status=status.HTTP_200_OK)
-        
+        # Prevent duplicate forms (uncomment if needed)
+        # if JobOnboardingForm.objects.filter(user=user).exists():
+        #     return Response({
+        #         "message": "Job onboarding form already exists for this user."
+        #     }, status=status.HTTP_200_OK)
+
         serializer = JobOnboardingFormSerializer(data=request.data)
         if serializer.is_valid():
-            job_form = serializer.save(user = user)
+            job_form = serializer.save(user=user)
 
+            print("✅ Job form saved:", job_form)
+        
+
+            # WordPress publishing (optional)
             # job_page = JobPage.objects.filter(user=request.user).last()
             # if not job_page:
             #     return Response({"error": "No job page submitted for this user."}, status=400)
-            
             # try:
             #     html_content = generate_structured_job_html(job_form)
             #     upload_job_post_to_wordpress(job_form, job_page, html_content)
             # except Exception as e:
             #     return Response({"error": f"Failed to publish job: {str(e)}"}, status=500)
 
+            # Background Task Creation
+            run_job_template_generation(job_form)
             try:
-                # task = create_initial_job_blog_task(user, job_form)
-                template_task = create_initial_job_tasks(user, job_form)
-                print("task created successfully ")
+                create_initial_job_tasks(user, job_form)
+                print("Task created successfully")
             except Exception as e:
                 return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
-            
-
 
             return Response({
                 "message": "Onboarding form created successfully",
                 "data": serializer.data
             }, status=status.HTTP_201_CREATED)
+
         return Response({
             "message": "Form submission failed",
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     def get(self, request, pk=None, format=None):
         if pk:
-            form = get_object_or_404(JobOnboardingForm,user = request.user)
+            form = get_object_or_404(JobOnboardingForm, pk=pk, user=request.user)
             serializer = JobOnboardingFormSerializer(form)
             return Response({
                 "message": f"Onboarding form ID {pk} fetched successfully",
                 "data": serializer.data
             }, status=status.HTTP_200_OK)
         else:
-            forms = JobOnboardingForm.objects.all()
+            forms = JobOnboardingForm.objects.filter(user=request.user)
             serializer = JobOnboardingFormSerializer(forms, many=True)
             return Response({
                 "message": "All onboarding forms fetched successfully",
                 "data": serializer.data
             }, status=status.HTTP_200_OK)
-        
+
     def patch(self, request, pk, format=None):
         try:
-            instance = JobOnboardingForm.objects.get(pk=pk)
+            instance = JobOnboardingForm.objects.get(pk=pk, user=request.user)
         except JobOnboardingForm.DoesNotExist:
             return Response({
                 "message": f"Onboarding form with ID {pk} does not exist."
@@ -100,35 +137,29 @@ class CreateJobOnboardingFormAPIView(APIView):
                 "message": f"Onboarding form ID {pk} updated successfully.",
                 "data": serializer.data
             }, status=status.HTTP_200_OK)
+
         return Response({
             "message": "Update failed due to invalid data.",
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
-    
 
-class SubmitJobPageAPI(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        user = request.user
-        page_url = request.data.get("page_url")
-
-        if not page_url:
-            return Response({"error": "Page URL is required."}, status=400)
-
+    def delete(self, request, pk, format=None):
         try:
-            wp_conn = user.wordpress_connection
-        except WordPressConnection.DoesNotExist:
-            return Response({"error": "User has not connected WordPress."}, status=400)
+            form = JobOnboardingForm.objects.get(pk=pk, user=request.user)
+        except JobOnboardingForm.DoesNotExist:
+            return Response({
+                "message": f"Onboarding form with ID {pk} does not exist."
+            }, status=status.HTTP_404_NOT_FOUND)
 
-        job_page = JobPage.objects.create(
-            user=user,
-            wordpress_connection=wp_conn,
-            page_url=page_url
-        )
+        form.delete()
+        return Response({
+            "message": f"Onboarding form ID {pk} deleted successfully."
+        }, status=status.HTTP_204_NO_CONTENT)
 
-        return Response({"message": "Job page submitted successfully."})
-    
+
+
+
+
 
 class JobClosedAPIView(APIView):
     permission_classes = [AllowAny]
@@ -1217,136 +1248,229 @@ def map_job_form_to_api_payload(job_form):
 
     return payload
 
-def run_job_template_generation(task):
+# def run_job_template_generation(job_onboardingform):
+#     try:
+#         user = job_onboardingform.user
+        
+#         # Get job onboarding form
+#         job_onboarding = job_onboardingform
+#         if not job_onboarding:
+#             # Try to get from user if not directly linked to task
+#             try:
+#                 job_onboarding = user.jobonboardingform
+#             except:
+#                 job_onboarding = None
+        
+#         # if not job_onboarding:
+#         #     logger.warning("⚠ No job onboarding form found.")
+#         #     task.status = "failed"
+#         #     task.save()
+#         #     return
+
+#         # Monthly check - same logic as before
+#         current_month = timezone.now().strftime("%Y-%m")
+#         # onboarding_form = user.onboardingform.last()
+#         # package = onboarding_form.package
+#         package = getattr(user.usersubscription, "package", None)
+#         if not package:
+#             logger.warning("⚠ No package found for user.")
+#             # task.status = "failed"
+#             # task.save()
+#             # return
+
+#         package_limit = package.blog_limit  # Using same limit as blogs
+        
+#         # if task.month_year != current_month:
+#         #     task.count_this_month = 0
+#         #     task.month_year = current_month
+
+#         # Check if limit reached
+#         # if task.count_this_month >= package_limit:
+#         #     logger.warning("🚫 Job template limit reached for this month.")
+#         #     task.status = "skipped"
+#         #     task.save()
+#         #     return
+
+#         # Map job form data to API payload
+#         api_payload = map_job_form_to_api_payload(job_onboarding)
+#         logger.info(f"🔑 Generated API payload: {api_payload}")
+
+#         # Call the job template generation API
+#         response = requests.post(
+#             f"{settings.AI_API_DOMAIN}/generate_job_template",
+#             json=api_payload,
+#             timeout=60
+#         )
+
+#         if response.status_code != 200:
+#             logger.error(f"❌ Job template API response error: {response.text}")
+#             # task.status = "failed"
+#             # task.ai_request_payload = api_payload
+#             # task.ai_response_payload = {"error": response.text}
+#             # task.save()
+#             return
+        
+#         data = response.json()
+#         job_template = data.get("jobTemplate", "").strip()
+        
+#         if not job_template:
+#             logger.warning("⚠ Job template is empty.")
+#             # task.status = "failed"
+#             # task.save()
+#             return
+
+#         logger.info(f"✅ Job Template generated successfully")
+
+#                 # Add cost structure to the AI response if applicable
+#         if job_onboarding.position and job_onboarding.position.lower() in ["owner operator", "lease-to-rent", "lease-to-purchase"]:
+#             cost_structure = map_cost_structure(job_onboarding)
+#             data["cost_structure"] = cost_structure
+#             logger.info(f"✅ Added cost structure to response: {cost_structure}")
+
+#         # Save the template (you might want to create a new model for this)
+#         # For now, we'll update the task with the response
+#         # task.ai_request_payload = api_payload
+#         # task.ai_response_payload = data
+#         # task.last_run = timezone.now()
+#         # task.next_run = timezone.now() + timedelta(days=package.interval)
+#         # task.count_this_month += 1
+#         # task.status = "completed"
+#         # task.save()
+
+#         logger.info(f"✅ Job Template Task completed successfully.")
+
+#         # WordPress upload - convert the template to HTML and post
+#         if hasattr(user, 'wordpress_connection'):
+#             # Convert the template text to HTML
+#             # html_content = convert_template_to_html(job_template)
+#             html_content = process_job_template_html(job_template)
+#             # html_content = f"<div>{job_template.replace('**', '<strong>').replace('*', '<li>').replace('\n', '<br>')}</div>"
+#             upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content,api_payload=data)
+
+#         # Auto-create next task if limit not reached - same logic as before
+#         # if task.count_this_month < package_limit:
+#         #     JobTask.objects.create(
+#         #         user=user,
+#         #         job_onboarding=job_onboarding,
+#         #         task_type='job_template_generation',  # Or create a new task type for templates
+#         #         next_run=task.next_run,
+#         #         status='pending',
+#         #         count_this_month=task.count_this_month,
+#         #         month_year=current_month,
+#         #         is_active=True
+#         #     )
+#             logger.info(f"✅ New job template task created")
+#         # else:
+#         #     JobTask.objects.create(
+#         #         user=user,
+#         #         job_onboarding=job_onboarding,
+#         #         task_type='job_template_generation',  # Or create a new task type for templates
+#         #         next_run=None,
+#         #         status='pending',
+#         #         count_this_month=0,
+#         #         month_year=current_month,
+#         #         is_active=True
+#         #     )
+#             logger.info(f"⏸ Job template limit reached. Next task paused until new month.")
+
+#     except Exception as e:
+#         logger.exception(f"❌ Exception in run_job_template_generation for task: {str(e)}")
+#         # task.status = "failed"
+#         # task.ai_response_payload = {"error": str(e)}
+#         # task.save()
+
+
+
+
+def run_job_template_generation(job_task_or_form):
     try:
-        user = task.user
-        
-        # Get job onboarding form
-        job_onboarding = task.job_onboarding
-        if not job_onboarding:
-            # Try to get from user if not directly linked to task
-            try:
-                job_onboarding = user.jobonboardingform
-            except:
-                job_onboarding = None
-        
+        if isinstance(job_task_or_form, JobTask):
+            job_onboarding = job_task_or_form.job_onboarding
+            user = job_task_or_form.user
+        else:
+            job_onboarding = job_task_or_form
+            user = job_onboarding.user
+
         if not job_onboarding:
             logger.warning("⚠ No job onboarding form found.")
-            task.status = "failed"
-            task.save()
             return
 
-        # Monthly check - same logic as before
-        current_month = timezone.now().strftime("%Y-%m")
-        # onboarding_form = user.onboardingform.last()
-        # package = onboarding_form.package
-        package = getattr(user.usersubscription, "package", None)
-        if not package:
-            logger.warning("⚠ No package found for user.")
-            task.status = "failed"
-            task.save()
-            return
 
-        package_limit = package.blog_limit  # Using same limit as blogs
-        
-        if task.month_year != current_month:
-            task.count_this_month = 0
-            task.month_year = current_month
+        job_template = JobTemplate.objects.create(
+            user=user,
+            job_onboarding=job_onboarding,
+            status='processing'
+        )
 
-        # Check if limit reached
-        if task.count_this_month >= package_limit:
-            logger.warning("🚫 Job template limit reached for this month.")
-            task.status = "skipped"
-            task.save()
-            return
 
-        # Map job form data to API payload
+        # Map job form data
         api_payload = map_job_form_to_api_payload(job_onboarding)
-        logger.info(f"🔑 Generated API payload: {api_payload}")
-
-        # Call the job template generation API
+        job_template.ai_request_payload = api_payload
+        job_template.save()
         response = requests.post(
             f"{settings.AI_API_DOMAIN}/generate_job_template",
             json=api_payload,
             timeout=60
         )
-
         if response.status_code != 200:
-            logger.error(f"❌ Job template API response error: {response.text}")
-            task.status = "failed"
-            task.ai_request_payload = api_payload
-            task.ai_response_payload = {"error": response.text}
-            task.save()
+            logger.error(f"❌ API error: {response.text}")
+            job_template.status = 'failed'
+            job_template.save()
             return
         
         data = response.json()
-        job_template = data.get("jobTemplate", "").strip()
-        
-        if not job_template:
-            logger.warning("⚠ Job template is empty.")
-            task.status = "failed"
-            task.save()
+        job_template_content = data.get("jobTemplate", "").strip()
+
+        if not job_template_content:
+            logger.warning("⚠ Empty job template.")
+            job_template.status = 'failed'
+            job_template.save()
             return
+        
 
-        logger.info(f"✅ Job Template generated successfully")
+         # Update job template with AI response
+        job_template.ai_response_payload = data
+        job_template.generated_content = job_template_content
 
-                # Add cost structure to the AI response if applicable
+        
+
         if job_onboarding.position and job_onboarding.position.lower() in ["owner operator", "lease-to-rent", "lease-to-purchase"]:
             cost_structure = map_cost_structure(job_onboarding)
             data["cost_structure"] = cost_structure
             logger.info(f"✅ Added cost structure to response: {cost_structure}")
 
-        # Save the template (you might want to create a new model for this)
-        # For now, we'll update the task with the response
-        task.ai_request_payload = api_payload
-        task.ai_response_payload = data
-        task.last_run = timezone.now()
-        task.next_run = timezone.now() + timedelta(days=package.interval)
-        task.count_this_month += 1
-        task.status = "completed"
-        task.save()
 
-        logger.info(f"✅ Job Template Task {task.id} completed successfully.")
 
-        # WordPress upload - convert the template to HTML and post
+        # WordPress upload
         if hasattr(user, 'wordpress_connection'):
-            # Convert the template text to HTML
-            # html_content = convert_template_to_html(job_template)
-            html_content = process_job_template_html(job_template)
-            # html_content = f"<div>{job_template.replace('**', '<strong>').replace('*', '<li>').replace('\n', '<br>')}</div>"
-            upload_job_post_to_wordpress(job_onboarding, user.wordpress_connection, html_content,api_payload=data, job_task=task)
+            html_content = process_job_template_html(job_template_content)
+            page_url = upload_job_post_to_wordpress(
+                job_onboarding,
+                user.wordpress_connection,
+                html_content,
+                api_payload=data
+            )
 
-        # Auto-create next task if limit not reached - same logic as before
-        if task.count_this_month < package_limit:
-            JobTask.objects.create(
-                user=user,
-                job_onboarding=job_onboarding,
-                task_type='job_template_generation',  # Or create a new task type for templates
-                next_run=task.next_run,
-                status='pending',
-                count_this_month=task.count_this_month,
-                month_year=current_month,
-                is_active=True
-            )
-            logger.info(f"✅ New job template task created")
-        else:
-            JobTask.objects.create(
-                user=user,
-                job_onboarding=job_onboarding,
-                task_type='job_template_generation',  # Or create a new task type for templates
-                next_run=None,
-                status='pending',
-                count_this_month=0,
-                month_year=current_month,
-                is_active=True
-            )
-            logger.info(f"⏸ Job template limit reached. Next task paused until new month.")
+            if page_url:
+                job_template.wp_page_url = page_url
+                job_template.status = 'completed'
+                job_template.published_date = timezone.now()
+
+                logger.info(f"✅ Job uploaded for {job_onboarding.company_name}")
+            else:
+                job_template.status = 'failed'
+        
+            job_template.save()
 
     except Exception as e:
-        logger.exception(f"❌ Exception in run_job_template_generation for task {task.id}: {str(e)}")
-        task.status = "failed"
-        task.ai_response_payload = {"error": str(e)}
-        task.save()
+        logger.exception(f"❌ Error in run_job_template_generation: {str(e)}")
+        if job_template:
+            job_template.status = 'failed'
+            job_template.save()
+
+
+
+
 
 # Update the task creation function to handle template generation
 def create_initial_job_tasks(user, job_onboarding):
@@ -1372,20 +1496,20 @@ def create_initial_job_tasks(user, job_onboarding):
     )
     
     # Create template task
-    template_task = JobTask.objects.create(
-        user=user,
-        job_onboarding=job_onboarding,
-        task_type='job_template_generation',  # You might need to add this to TASK_TYPES
-        next_run=timezone.now(),
-        status='pending',
-        count_this_month=0,
-        month_year=current_month,
-        is_active=True
-    )
+    # template_task = JobTask.objects.create(
+    #     user=user,
+    #     job_onboarding=job_onboarding,
+    #     task_type='job_template_generation',  # You might need to add this to TASK_TYPES
+    #     next_run=timezone.now(),
+    #     status='pending',
+    #     count_this_month=0,
+    #     month_year=current_month,
+    #     is_active=True
+    # )
     
     logger.info(f"✅ Initial job tasks created for user {user.email}")
-    return blog_task , template_task
-    # return  template_task
+    return blog_task
+    
 
 
 # -------------------
@@ -1428,38 +1552,92 @@ class JobPostsPagination(PageNumberPagination):
             "data": data if data is not None else [],
         })
 
+
+from django.core.paginator import Paginator
+from django.shortcuts import get_object_or_404
+
+from .models import JobTemplate
+from .serializers import JobTemplateSerializer
+
 class MyJobPostsView(APIView):
     permission_classes = [IsAuthenticated]
 
+    # def get(self, request, pk=None):
+    #     if pk is None:
+    #         job_tasks = JobTask.objects.filter(
+    #             user=request.user,
+    #             task_type="job_template_generation"
+    #         ).order_by("-created_at")
+
+    #         paginator = JobPostsPagination()
+    #         result_page = paginator.paginate_queryset(job_tasks, request)
+    #         serializer = JobTaskSerializer(result_page, many=True)
+
+    #         # ✅ send serializer.data directly
+    #         return paginator.get_paginated_response(serializer.data)
+
+    #     # Single job post retrieval
+    #     job_task = JobTask.objects.filter(
+    #         user=request.user,
+    #         task_type="job_template_generation",
+    #         pk=pk
+    #     ).first()
+
+    #     if not job_task:
+    #         return Response({
+    #             "success": False,
+    #             "message": "Job post not found.",
+    #             "data": None,
+    #         }, status=status.HTTP_404_NOT_FOUND)
+
+    #     serializer = JobTaskSerializer(job_task)
+    #     return Response({
+    #         "success": True,
+    #         "message": "Job post retrieved successfully.",
+    #         "data": serializer.data,
+    #     }, status=status.HTTP_200_OK)
+
     def get(self, request, pk=None):
         if pk is None:
-            job_tasks = JobTask.objects.filter(
-                user=request.user,
-                task_type="job_template_generation"
+            # Get all job templates for the user
+            job_templates = JobTemplate.objects.filter(
+                user=request.user
             ).order_by("-created_at")
-
-            paginator = JobPostsPagination()
-            result_page = paginator.paginate_queryset(job_tasks, request)
-            serializer = JobTaskSerializer(result_page, many=True)
-
-            # ✅ send serializer.data directly
-            return paginator.get_paginated_response(serializer.data)
+            
+            # Pagination
+            paginator = Paginator(job_templates, 10)  # 10 items per page
+            page_number = request.GET.get('page')
+            page_obj = paginator.get_page(page_number)
+            
+            serializer = JobTemplateSerializer(page_obj, many=True)
+            
+            return Response({
+                "success": True,
+                "message": "Job posts retrieved successfully.",
+                "data": {
+                    "results": serializer.data,
+                    "count": paginator.count,
+                    "total_pages": paginator.num_pages,
+                    "current_page": page_obj.number,
+                    "has_next": page_obj.has_next(),
+                    "has_previous": page_obj.has_previous(),
+                }
+            }, status=status.HTTP_200_OK)
 
         # Single job post retrieval
-        job_task = JobTask.objects.filter(
+        job_template = JobTemplate.objects.filter(
             user=request.user,
-            task_type="job_template_generation",
             pk=pk
         ).first()
 
-        if not job_task:
+        if not job_template:
             return Response({
                 "success": False,
                 "message": "Job post not found.",
                 "data": None,
             }, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = JobTaskSerializer(job_task)
+        serializer = JobTemplateSerializer(job_template)
         return Response({
             "success": True,
             "message": "Job post retrieved successfully.",

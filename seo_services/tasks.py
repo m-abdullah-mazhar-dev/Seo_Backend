@@ -83,29 +83,46 @@ def process_due_seo_tasks():
 
 
 # tasks.py
+# @shared_task
+# def process_due_job_tasks():
+#     logger.info(f"🔄 Job tasks started.")
+#     set_current_service("trucking")
+#     now = timezone.now()
+#     tasks = JobTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
+#     logger.info(f"🔄 Found {tasks.count()} due Job tasks to process.")
+
+#     for task in tasks:
+#         logger.info(f"📌 Processing Job Task ID {task.id} for user {task.user.email}")
+#         try:
+#             if task.task_type == 'job_blog_writing':
+#                 logger.info("✍ Running job blog writing task...")
+#                 run_job_blog_writing(task)
+#             elif task.task_type == 'job_gmb_post':
+#                 logger.info("📢 Running job GMB post task...")
+#                 # Similar implementation for GMB posts
+#             elif task.task_type == 'job_template_generation':
+#                 logger.info("📢 Running job template task...")
+#                 run_job_template_generation(task)
+#                 # Similar implementation for GMB posts
+#         except Exception as e:
+#             logger.error(f"❌ Failed processing job task ID {task.id}: {str(e)}")
+
 @shared_task
 def process_due_job_tasks():
     logger.info(f"🔄 Job tasks started.")
-    set_current_service("trucking")
     now = timezone.now()
     tasks = JobTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
     logger.info(f"🔄 Found {tasks.count()} due Job tasks to process.")
 
     for task in tasks:
-        logger.info(f"📌 Processing Job Task ID {task.id} for user {task.user.email}")
         try:
             if task.task_type == 'job_blog_writing':
-                logger.info("✍ Running job blog writing task...")
                 run_job_blog_writing(task)
-            elif task.task_type == 'job_gmb_post':
-                logger.info("📢 Running job GMB post task...")
-                # Similar implementation for GMB posts
             elif task.task_type == 'job_template_generation':
-                logger.info("📢 Running job template task...")
-                run_job_template_generation(task)
-                # Similar implementation for GMB posts
+                run_job_template_generation(task)  # ✅ Now passes JobTask
         except Exception as e:
-            logger.error(f"❌ Failed processing job task ID {task.id}: {str(e)}")
+            logger.error(f"❌ Failed job task ID {task.id}: {str(e)}")
+
 
 @shared_task
 def reactivate_monthly_blog_tasks():

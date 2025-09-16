@@ -230,3 +230,101 @@ class JobTaskSerializer(serializers.ModelSerializer):
 
     def get_total_applicants(self, obj):
         return 0
+    
+
+
+
+
+# serializers.py
+from rest_framework import serializers
+from django.utils.html import strip_tags
+from .models import JobTemplate
+
+class JobTemplateSerializer(serializers.ModelSerializer):
+    job_title = serializers.SerializerMethodField()
+    job_description = serializers.SerializerMethodField()
+    posted_on = serializers.DateTimeField(source="created_at", read_only=True)
+    total_applicants = serializers.SerializerMethodField()
+    company_name = serializers.CharField(source="job_onboarding.company_name", read_only=True)
+
+    class Meta:
+        model = JobTemplate
+        fields = [
+            'id', 'job_title', 'job_description', 'posted_on', 
+            'total_applicants', 'status', 'wp_page_url', 'company_name',
+            'published_date'
+        ]
+
+    def get_job_title(self, obj):
+        """Get job title from WordPress or AI response"""
+        # Try WordPress first
+        if obj.status == "completed" and obj.wp_page_url:
+            try:
+                wp_data = fetch_wordpress_post_data(obj.user.wordpress_connection, obj.wp_page_url)
+                if wp_data and wp_data.get('title'):
+                    return strip_tags(wp_data['title']).strip()
+            except Exception:
+                pass
+        
+        # Fallback to AI response
+        if obj.ai_response_payload:
+            if isinstance(obj.ai_response_payload, dict):
+                if 'title' in obj.ai_response_payload:
+                    return obj.ai_response_payload['title']
+                
+                if 'jobTemplate' in obj.ai_response_payload:
+                    template = obj.ai_response_payload['jobTemplate']
+                    lines = template.split('\n')
+                    for line in lines:
+                        clean_line = line.strip()
+                        if clean_line and not clean_line.startswith('<'):
+                            return clean_line
+            
+            elif isinstance(obj.ai_response_payload, str):
+                lines = obj.ai_response_payload.split('\n')
+                for line in lines:
+                    clean_line = line.strip()
+                    if clean_line and not clean_line.startswith('<'):
+                        return clean_line
+        
+        # Fallback to request payload
+        if obj.ai_request_payload and isinstance(obj.ai_request_payload, dict):
+            company = obj.ai_request_payload.get('company_name', '')
+            position = obj.ai_request_payload.get('position', 'Driver')
+            return f"{company} - {position}"
+        
+        # Final fallback
+        return f"{obj.job_onboarding.company_name} - Driver Position"
+
+    def get_job_description(self, obj):
+        """Get job description from WordPress or AI response"""
+        if obj.status == "completed" and obj.wp_page_url:
+            try:
+                wp_data = fetch_wordpress_post_data(obj.user.wordpress_connection, obj.wp_page_url)
+                if wp_data:
+                    description_text = wp_data.get('excerpt') or wp_data.get('content') or ''
+                    if description_text:
+                        clean_text = strip_tags(description_text)
+                        clean_text = ' '.join(clean_text.split())
+                        return clean_text[:300] + "..." if len(clean_text) > 300 else clean_text
+            except Exception:
+                pass
+        
+        # Fallback to AI response
+        if obj.ai_response_payload:
+            if isinstance(obj.ai_response_payload, dict) and 'jobTemplate' in obj.ai_response_payload:
+                template = obj.ai_response_payload['jobTemplate']
+                clean_text = strip_tags(template)
+                clean_text = ' '.join(clean_text.split())
+                return clean_text[:300] + "..." if len(clean_text) > 300 else clean_text
+            
+            elif isinstance(obj.ai_response_payload, str):
+                clean_text = strip_tags(obj.ai_response_payload)
+                clean_text = ' '.join(clean_text.split())
+                return clean_text[:300] + "..." if len(clean_text) > 300 else clean_text
+        
+        return "No description available"
+
+    def get_total_applicants(self, obj):
+        # You can implement applicant counting logic here
+        return 0
