@@ -737,6 +737,7 @@ class JobberService(CRMServiceBase):
         headers = {
             "Authorization": f"Bearer {self.connection.oauth_access_token}",
             "Content-Type": "application/json",
+            "X-JOBBER-API-VERSION": "2023-12-01",  # Required API version
         }
         if getattr(self.connection, "graphql_version", None):
             headers["X-JOBBER-GRAPHQL-VERSION"] = self.connection.graphql_version
@@ -746,10 +747,7 @@ class JobberService(CRMServiceBase):
         """Verify Jobber connection using OAuth token"""
         url = f"{self.api_base}/api/v1/users/me"
         
-        headers = {
-            "Authorization": f"Bearer {self.connection.oauth_access_token}",
-            "Content-Type": "application/json"
-        }
+        headers = self._get_headers()
         
         try:
             response = requests.get(url, headers=headers)
@@ -943,10 +941,7 @@ class JobberService(CRMServiceBase):
         
         url = f"{self.api_base}/api/v1/jobs"
         
-        headers = {
-            "Authorization": f"Bearer {self.connection.oauth_access_token}",
-            "Content-Type": "application/json"
-        }
+        headers = self._get_headers()
         
         # Map job data to Jobber job structure
         jobber_job_data = {
@@ -984,10 +979,7 @@ class JobberService(CRMServiceBase):
         
         url = f"{self.api_base}/api/v1/jobs/{job_id}"
         
-        headers = {
-            "Authorization": f"Bearer {self.connection.oauth_access_token}",
-            "Content-Type": "application/json"
-        }
+        headers = self._get_headers()
         
         # Determine the status based on won/lost
         status = "completed" if won else "cancelled"
