@@ -809,11 +809,10 @@ class JobberService(CRMServiceBase):
         
         # GraphQL query to get completed jobs with contact information
         query = """
-        query GetCompletedJobs($updatedSince: DateRange) {
+        query GetCompletedJobs {
             jobs(
                 filter: {
-                    status: COMPLETED
-                    updatedSince: $updatedSince
+                    jobStatus: COMPLETED
                 }
                 first: 100
             ) {
@@ -821,7 +820,7 @@ class JobberService(CRMServiceBase):
                     id
                     jobNumber
                     title
-                    status
+                    jobStatus
                     total
                     createdAt
                     updatedAt
@@ -849,24 +848,15 @@ class JobberService(CRMServiceBase):
         }
         """
         
-        variables = {}
-        if last_check_time:
-            # DateRange format for Jobber API
-            variables["updatedSince"] = {
-                "start": last_check_time.isoformat(),
-                "end": timezone.now().isoformat()
-            }
-        
         headers = self._get_headers()
         
         print(f"Jobber GraphQL request headers: {headers}")
-        print(f"Jobber GraphQL request variables: {variables}")
         
         try:
             response = requests.post(
                 self.graphql_endpoint,
                 headers=headers,
-                json={"query": query, "variables": variables},
+                json={"query": query},
                 timeout=30
             )
 
@@ -905,7 +895,7 @@ class JobberService(CRMServiceBase):
                         "id": job.get("id"),
                         "title": job.get("title", "Unknown Job"),
                         "job_number": job.get("jobNumber"),
-                        "status": job.get("status"),
+                        "status": job.get("jobStatus"),
                         "total": job.get("total"),
                         "created_at": job.get("createdAt"),
                         "updated_at": job.get("updatedAt"),
