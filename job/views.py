@@ -122,7 +122,7 @@ class CreateJobOnboardingFormAPIView(APIView):
                 "data": serializer.data
             }, status=status.HTTP_200_OK)
 
-    
+
 
     def patch(self, request, pk, format=None):
         try:
@@ -137,7 +137,6 @@ class CreateJobOnboardingFormAPIView(APIView):
             serializer.save()
             
             # Trigger WordPress update after successful form update
-            run_job_template_generation(instance, is_update=True)
             try:
                 # Find the latest job template for this form
                 job_template = JobTemplate.objects.filter(
@@ -146,11 +145,26 @@ class CreateJobOnboardingFormAPIView(APIView):
                 
                 if job_template:
                     # Regenerate and update the WordPress post
-                    run_job_template_generation(instance)
+                    updated_template = run_job_template_generation(instance, is_update=True)
+                    
+                    if updated_template and updated_template.status == 'completed':
+                        return Response({
+                            "message": f"Onboarding form ID {pk} updated successfully and WordPress post refreshed.",
+                            "data": serializer.data
+                        }, status=status.HTTP_200_OK)
+                    else:
+                        return Response({
+                            "message": f"Form updated but WordPress sync failed or is still processing.",
+                            "data": serializer.data
+                        }, status=status.HTTP_200_OK)
+                else:
+                    # If no template exists, create a new one
+                    run_job_template_generation(instance, is_update=False)
                     return Response({
-                        "message": f"Onboarding form ID {pk} updated successfully and WordPress post refreshed.",
+                        "message": f"Onboarding form ID {pk} updated successfully. Creating new WordPress post.",
                         "data": serializer.data
                     }, status=status.HTTP_200_OK)
+                    
             except Exception as e:
                 # Log the error but don't fail the request
                 logger.error(f"WordPress update failed: {str(e)}")
@@ -158,11 +172,6 @@ class CreateJobOnboardingFormAPIView(APIView):
                     "message": f"Form updated but WordPress sync failed: {str(e)}",
                     "data": serializer.data
                 }, status=status.HTTP_200_OK)
-            
-            return Response({
-                "message": f"Onboarding form ID {pk} updated successfully.",
-                "data": serializer.data
-            }, status=status.HTTP_200_OK)
         
         return Response({
             "message": "Update failed due to invalid data.",
@@ -1549,7 +1558,7 @@ def map_job_form_to_api_payload(job_form):
 
 
 
-# utils.py
+# test
 def run_job_template_generation(job_task_or_form, is_update=False):
     try:
         if isinstance(job_task_or_form, JobTask):
@@ -1571,9 +1580,14 @@ def run_job_template_generation(job_task_or_form, is_update=False):
             
             if not job_template:
                 logger.warning("No existing job template found for update.")
-                return
-                
-            job_template.status = 'processing'
+                # Fallback to creating a new one if no existing template found
+                job_template = JobTemplate.objects.create(
+                    user=user,
+                    job_onboarding=job_onboarding,
+                    status='processing'
+                )
+            else:
+                job_template.status = 'processing'
         else:
             # Create new template for new submissions
             job_template = JobTemplate.objects.create(
@@ -1628,7 +1642,8 @@ def run_job_template_generation(job_task_or_form, is_update=False):
                 user.wordpress_connection,
                 html_content,
                 api_payload=data,
-                page_id=page_id  # Pass page_id for updates
+                page_id=page_id,  # Pass page_id for updates
+                job_template=job_template  # Pass the job template
             )
 
             if page_url:
@@ -1640,13 +1655,14 @@ def run_job_template_generation(job_task_or_form, is_update=False):
                 job_template.status = 'failed'
         
         job_template.save()
+        return job_template
 
     except Exception as e:
         logger.exception(f"❌ Error in run_job_template_generation: {str(e)}")
         if job_template:
             job_template.status = 'failed'
             job_template.save()
-
+        return None
 
 
 
