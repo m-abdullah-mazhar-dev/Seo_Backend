@@ -802,54 +802,177 @@ class JobberService(CRMServiceBase):
                 return False
         return True
     
+    # def get_closed_jobs(self, last_check_time=None):
+    #     """Fetch closed jobs from Jobber CRM using GraphQL"""
+    #     if not self.ensure_valid_token():
+    #         return {"success": False, "error": "Invalid or expired token"}
+        
+    #     # GraphQL query to get archived (closed) jobs with contact information
+    #     query = """
+    #     query GetArchivedJobs {
+    #     jobs(
+    #         filter: { status: ARCHIVED }
+    #         first: 100
+    #     ) {
+    #         nodes {
+    #         id
+    #         jobNumber
+    #         title
+    #         status
+    #         total
+    #         createdAt
+    #         updatedAt
+    #         client {
+    #             id
+    #             firstName
+    #             lastName
+    #             emails {
+    #             address
+    #             }
+    #             phones {
+    #             number
+    #             }
+    #         }
+    #         property {
+    #             id
+    #             address {
+    #             street1
+    #             city
+    #             postalCode
+    #             }
+    #         }
+    #         }
+    #     }
+    #     }
+    #     """
+
+    #     headers = self._get_headers()
+        
+    #     print(f"Jobber GraphQL request headers: {headers}")
+        
+    #     try:
+    #         response = requests.post(
+    #             self.graphql_endpoint,
+    #             headers=headers,
+    #             json={"query": query},
+    #             timeout=30
+    #         )
+
+    #         print(f"Jobber API response status: {response.status_code}")
+    #         print(f"Jobber API response text: {response.text}")
+            
+    #         if response.status_code == 200:
+    #             result = response.json()
+                
+    #             if "errors" in result:
+    #                 error_msg = result["errors"][0].get("message", "Unknown GraphQL error")
+    #                 return {"success": False, "error": f"GraphQL Error: {error_msg}"}
+                
+    #             # GraphQL response format
+    #             jobs = result.get("data", {}).get("jobs", {}).get("nodes", [])
+    #             print(f"Found {len(jobs)} completed jobs from Jobber")
+                
+    #             # Convert to consistent format
+    #             formatted_jobs = []
+    #             for job in jobs:
+    #                 client = job.get("client", {})
+                    
+    #                 # Extract email from emails array
+    #                 email = ""
+    #                 emails = client.get("emails", [])
+    #                 if emails and len(emails) > 0:
+    #                     email = emails[0].get("address", "")
+                    
+    #                 # Extract phone from phones array
+    #                 phone = ""
+    #                 phones = client.get("phones", [])
+    #                 if phones and len(phones) > 0:
+    #                     phone = phones[0].get("number", "")
+                    
+    #                 formatted_job = {
+    #                     "id": job.get("id"),
+    #                     "title": job.get("title", "Unknown Job"),
+    #                     "job_number": job.get("jobNumber"),
+    #                     "status": job.get("jobStatus"),
+    #                     "total": job.get("total"),
+    #                     "created_at": job.get("createdAt"),
+    #                     "updated_at": job.get("updatedAt"),
+    #                     "contact": {
+    #                         "id": client.get("id"),
+    #                         "first_name": client.get("firstName", ""),
+    #                         "last_name": client.get("lastName", ""),
+    #                         "email": email,
+    #                         "phone": phone
+    #                     },
+    #                     "property": job.get("property", {})
+    #                 }
+    #                 formatted_jobs.append(formatted_job)
+                
+    #             return {"success": True, "data": formatted_jobs}
+            
+    #         elif response.status_code == 401:  # Token expired
+    #             print("Jobber token expired. Attempting refresh...")
+    #             if self.refresh_token():
+    #                 # Retry with new token
+    #                 return self.get_closed_jobs(last_check_time)
+    #             else:
+    #                 self.connection.is_connected = False
+    #                 self.connection.save()
+    #                 return {"success": False, "error": "TOKEN_EXPIRED"}
+            
+    #         else:
+    #             error_msg = f"Jobber Error {response.status_code}: {response.text}"
+    #             print(f"Jobber API error: {error_msg}")
+    #             return {"success": False, "error": error_msg}
+
+    #     except requests.RequestException as e:
+    #         return {"success": False, "error": f"Request failed: {str(e)}"}
+
     def get_closed_jobs(self, last_check_time=None):
-        """Fetch closed jobs from Jobber CRM using GraphQL"""
+        """Fetch closed jobs (archived) from Jobber CRM using GraphQL"""
         if not self.ensure_valid_token():
             return {"success": False, "error": "Invalid or expired token"}
         
-        # GraphQL query to get completed jobs with contact information
+        # ✅ Use lowercase 'archived' (correct JobStatusTypeEnum)
         query = """
-        query GetCompletedJobs {
-            jobs(
-                filter: {
-                    status: COMPLETED
+        query GetArchivedJobs {
+        jobs(
+            filter: { status: archived }
+            first: 100
+        ) {
+            nodes {
+            id
+            jobNumber
+            title
+            jobStatus    # ✅ fix: correct field name
+            total
+            createdAt
+            updatedAt
+            client {
+                id
+                firstName
+                lastName
+                emails {
+                address
                 }
-                first: 100
-            ) {
-                nodes {
-                    id
-                    jobNumber
-                    title
-                    jobStatus
-                    total
-                    createdAt
-                    updatedAt
-                    client {
-                        id
-                        firstName
-                        lastName
-                        emails {
-                            address
-                        }
-                        phones {
-                            number
-                        }
-                    }
-                    property {
-                        id
-                        address {
-                            street1
-                            city
-                            postalCode
-                        }
-                    }
+                phones {
+                number
                 }
             }
+            property {
+                id
+                address {
+                street1
+                city
+                postalCode
+                }
+            }
+            }
+        }
         }
         """
-        
+
         headers = self._get_headers()
-        
         print(f"Jobber GraphQL request headers: {headers}")
         
         try:
@@ -870,32 +993,28 @@ class JobberService(CRMServiceBase):
                     error_msg = result["errors"][0].get("message", "Unknown GraphQL error")
                     return {"success": False, "error": f"GraphQL Error: {error_msg}"}
                 
-                # GraphQL response format
                 jobs = result.get("data", {}).get("jobs", {}).get("nodes", [])
-                print(f"Found {len(jobs)} completed jobs from Jobber")
+                print(f"✅ Found {len(jobs)} archived (closed) jobs from Jobber")
                 
-                # Convert to consistent format
                 formatted_jobs = []
                 for job in jobs:
                     client = job.get("client", {})
                     
-                    # Extract email from emails array
                     email = ""
                     emails = client.get("emails", [])
-                    if emails and len(emails) > 0:
+                    if emails:
                         email = emails[0].get("address", "")
                     
-                    # Extract phone from phones array
                     phone = ""
                     phones = client.get("phones", [])
-                    if phones and len(phones) > 0:
+                    if phones:
                         phone = phones[0].get("number", "")
                     
                     formatted_job = {
                         "id": job.get("id"),
                         "title": job.get("title", "Unknown Job"),
                         "job_number": job.get("jobNumber"),
-                        "status": job.get("jobStatus"),
+                        "status": job.get("jobStatus"),  # ✅ use jobStatus
                         "total": job.get("total"),
                         "created_at": job.get("createdAt"),
                         "updated_at": job.get("updatedAt"),
@@ -913,9 +1032,8 @@ class JobberService(CRMServiceBase):
                 return {"success": True, "data": formatted_jobs}
             
             elif response.status_code == 401:  # Token expired
-                print("Jobber token expired. Attempting refresh...")
+                print("⚠️ Jobber token expired. Attempting refresh...")
                 if self.refresh_token():
-                    # Retry with new token
                     return self.get_closed_jobs(last_check_time)
                 else:
                     self.connection.is_connected = False
@@ -929,6 +1047,8 @@ class JobberService(CRMServiceBase):
 
         except requests.RequestException as e:
             return {"success": False, "error": f"Request failed: {str(e)}"}
+
+
     
     def extract_email_from_deal(self, job):
         """Extract email from Jobber job data"""
