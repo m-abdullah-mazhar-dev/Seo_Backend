@@ -296,6 +296,28 @@ def handle_rate_limit(connection):
 
 
 # crm/tasks.py
+@shared_task
+def check_jobber_closed_jobs():
+    """Celery task to check Jobber CRM for closed jobs and send emails"""
+    logger.info(f"🔄 Jobber closed jobs check started.")
+    
+    jobber_connections = CRMConnection.objects.filter(
+        crm_type__provider='jobber',
+        is_connected=True
+    )
+    
+    results = []
+    
+    for connection in jobber_connections:
+        result = process_jobber_connection(connection)
+        results.append({
+            'connection_id': connection.id,
+            'connection_name': connection.connection_name,
+            'result': result
+        })
+    
+    return results
+
 @shared_task(bind=True, max_retries=3)
 def check_hubspot_closed_jobs(self):
     """Celery task to check HubSpot for closed jobs and send emails directly"""
@@ -423,6 +445,103 @@ def process_hubspot_deal(deal, connection):
         'no_url': no_url,
         'job_id': deal_id,
         'deal_name': deal.get('name', 'Unknown Deal'),
+        'from_email': settings.DEFAULT_FROM_EMAIL,
+        'to_email': email,
+        'contact_name': contact_name,
+        'current_date': timezone.now(),
+    }
+    
+    # Send email directly using Django's email system
+    return send_feedback_email(context)
+
+def process_jobber_connection(connection):
+    """Process a single Jobber connection for closed jobs"""
+    crm_service = get_crm_service(connection)
+    
+    # Check if connection is valid
+    if not connection.is_connected:
+        print(f"Skipping {connection.connection_name}: Connection not active")
+        return {"success": False, "error": "CONNECTION_DISCONNECTED", "processed_count": 0}
+    
+    # Get last check time
+    last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
+    
+    # Fetch closed jobs from Jobber
+    result = crm_service.get_closed_jobs(last_check)
+    
+    if not result['success']:
+        error = result.get('error', 'Unknown error')
+        
+        if 'expired' in error.lower() or 'invalid' in error.lower():
+            # Mark connection as disconnected
+            connection.is_connected = False
+            connection.save()
+            return {"success": False, "error": "TOKEN_EXPIRED", "processed_count": 0}
+        else:
+            return {"success": False, "error": error, "processed_count": 0}
+    
+    closed_jobs = result['data']
+    processed_count = 0
+    
+    for job in closed_jobs:
+        job_id = job.get('id')
+        last_modified = job.get('updated_at')
+        
+        if should_process_deal(job_id, last_modified, connection):
+            success = process_jobber_job(job, connection)
+            if success:
+                processed_count += 1
+    
+    # Update last sync time if we processed any jobs
+    if processed_count > 0:
+        connection.last_sync = timezone.now()
+        connection.save(update_fields=['last_sync'])
+    
+    return {"success": True, "processed_count": processed_count, "total_count": len(closed_jobs)}
+
+def process_jobber_job(job, connection):
+    """Process a single Jobber job and send email"""
+    job_id = job.get('id')
+    
+    # Extract email from job (assuming job has contact info)
+    email = job.get('contact', {}).get('email', '')
+    
+    if not email or '@' not in email:
+        print(f"Skipping job {job_id}: No valid email found")
+        return False
+    
+    # Get contact name
+    contact = job.get('contact', {})
+    contact_name = f"{contact.get('first_name', '')} {contact.get('last_name', '')}".strip()
+    
+    # Create feedback record
+    feedback = ClientFeedback.objects.create(
+        email=email,
+        service_area=job.get('service_type', ''),
+        job_id=job_id,
+        user=connection.user,
+        crm_connection=connection,
+        metadata={
+            'job_title': job.get('title', 'Unknown Job'),
+            'price': job.get('price', ''),
+            'start_date': job.get('start_date', ''),
+            'contact_name': contact_name,
+            'description': job.get('description', ''),
+            'status': job.get('status', '')
+        }
+    )
+    
+    # Generate feedback URLs
+    base_url = settings.FRONTEND_URL.rstrip('/')
+    yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
+    no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+    
+    # Prepare context for email template
+    context = {
+        'yes_url': yes_url,
+        'no_url': no_url,
+        'job_id': job_id,
+        'deal_name': job.get('title', 'Unknown Job'),
         'from_email': settings.DEFAULT_FROM_EMAIL,
         'to_email': email,
         'contact_name': contact_name,
