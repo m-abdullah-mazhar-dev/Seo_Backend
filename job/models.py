@@ -314,6 +314,7 @@ class CRMType(models.Model):
         ('pipedrive', 'Pipedrive'),
         ('zoho', 'Zoho CRM'),
         ('salesforce', 'Salesforce'),
+        ('jobber', 'Jobber CRM'),
     ]
     
     name = models.CharField(max_length=100)
@@ -340,12 +341,16 @@ class CRMType(models.Model):
                 self.oauth_authorize_url = 'https://app.hubspot.com/oauth/authorize'
             elif self.provider == 'zoho':
                 self.oauth_authorize_url = 'https://accounts.zoho.com/oauth/v2/auth'
+            elif self.provider == 'jobber':
+                self.oauth_authorize_url = 'https://secure.getjobber.com/oauth/authorize'
                 
         if not self.oauth_token_url:
             if self.provider == 'hubspot':
                 self.oauth_token_url = 'https://api.hubapi.com/oauth/v1/token'
             elif self.provider == 'zoho':
                 self.oauth_token_url = 'https://accounts.zoho.com/oauth/v2/token'
+            elif self.provider == 'jobber':
+                self.oauth_token_url = 'https://api.getjobber.com/oauth/token'
                 
         super().save(*args, **kwargs)
 
