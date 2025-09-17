@@ -402,25 +402,16 @@ class OAuthInitAPIView(APIView):
             return f"https://accounts.zoho.com/oauth/v2/auth?{urlencode(params)}"
         
         elif crm_type.provider == 'jobber':
-            # Jobber OAuth2 scopes
-            scopes = [
-                'read:contacts',
-                'write:contacts',
-                'read:jobs',
-                'write:jobs',
-                'read:users'
-            ]
-            scope_string = ' '.join(scopes)
-            params = {
-                'client_id': settings.JOBBER_CLIENT_ID,
-                'response_type': 'code',
-                'redirect_uri': redirect_uri,
-                'scope': scope_string,
-                'state': state,
-            }
-            
             from urllib.parse import urlencode
-            return f"https://api.getjobber.com/oauth/authorize?{urlencode(params)}"
+            # Jobber OAuth 2.0 authorization URL
+            params = {
+                "client_id": settings.JOBBER_CLIENT_ID,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": "graphql_api",
+                "state": state,
+            }
+            return f"https://api.getjobber.com/api/oauth/authorize?{urlencode(params)}"
         
         # Add other CRM providers here
         return None
@@ -557,33 +548,28 @@ class OAuthCallbackAPIView(APIView):
                 print(f"Zoho token exchange error: {str(e)}")
 
         elif crm_type.provider == 'jobber':
-            token_url = "https://api.getjobber.com/oauth/token"
-            
-            data = {
-                'grant_type': 'authorization_code',
-                'client_id': settings.JOBBER_CLIENT_ID,
-                'client_secret': settings.JOBBER_CLIENT_SECRET,
-                'redirect_uri': redirect_uri,
-                'code': code
-            }
-            
-            try:
-                response = requests.post(token_url, data=data)
-                print(f"Jobber token exchange response: {response.status_code}")
-                print(f"Jobber token exchange response text: {response.text}")
-                
-                if response.status_code == 200:
-                    return response.json()
-                else:
-                    # Log the detailed error
-                    print(f"Jobber token exchange failed: {response.text}")
-                    
-            except requests.RequestException as e:
-                print(f"Jobber token exchange error: {str(e)}")
+                url = "https://api.getjobber.com/api/oauth/token"
+                data = {
+                    'grant_type': 'authorization_code',
+                    'client_id': settings.JOBBER_CLIENT_ID,
+                    'client_secret': settings.JOBBER_CLIENT_SECRET,
+                    'redirect_uri': redirect_uri,
+                    'code': code
+                }
+                headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        else:
+                logger.error(f"❌ Unsupported CRM provider: {crm_type.provider}")
+                return None
 
-                    
+        response = requests.post(url, data=data, headers=headers)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logger.error(f"❌ Token exchange failed ({crm_type.provider}): {response.text}")
+            return None
+
         
-        return None
+        
     
 class DebugZohoTokenView(APIView):
     """Debug view to check Zoho token scopes"""

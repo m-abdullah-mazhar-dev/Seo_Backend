@@ -337,7 +337,7 @@ class CRMType(models.Model):
             elif self.provider == 'zoho':
                 self.oauth_authorize_url = 'https://accounts.zoho.com/oauth/v2/auth'
             elif self.provider == 'jobber':
-                self.oauth_authorize_url = 'https://api.getjobber.com/oauth/authorize'
+                self.oauth_authorize_url = 'https://secure.getjobber.com/oauth/authorize'
                 
         if not self.oauth_token_url:
             if self.provider == 'hubspot':
