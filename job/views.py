@@ -59,8 +59,218 @@ from .serializers import JobOnboardingFormSerializer
 # from .wordpress import generate_structured_job_html, upload_job_post_to_wordpress
 
 
+# class CreateJobOnboardingFormAPIView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request, format=None):
+#         user = request.user
+
+#         # Prevent duplicate forms (uncomment if needed)
+#         # if JobOnboardingForm.objects.filter(user=user).exists():
+#         #     return Response({
+#         #         "message": "Job onboarding form already exists for this user."
+#         #     }, status=status.HTTP_200_OK)
+
+#         serializer = JobOnboardingFormSerializer(data=request.data)
+#         if serializer.is_valid():
+#             job_form = serializer.save(user=user)
+
+#             print("✅ Job form saved:", job_form)
+        
+
+#             # WordPress publishing (optional)
+#             # job_page = JobPage.objects.filter(user=request.user).last()
+#             # if not job_page:
+#             #     return Response({"error": "No job page submitted for this user."}, status=400)
+#             # try:
+#             #     html_content = generate_structured_job_html(job_form)
+#             #     upload_job_post_to_wordpress(job_form, job_page, html_content)
+#             # except Exception as e:
+#             #     return Response({"error": f"Failed to publish job: {str(e)}"}, status=500)
+
+#             # Background Task Creation
+#             run_job_template_generation(job_form)
+#             try:
+#                 create_initial_job_tasks(user, job_form)
+#                 print("Task created successfully")
+#             except Exception as e:
+#                 return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
+
+#             return Response({
+#                 "message": "Onboarding form created successfully",
+#                 "data": serializer.data
+#             }, status=status.HTTP_201_CREATED)
+
+#         return Response({
+#             "message": "Form submission failed",
+#             "errors": serializer.errors
+#         }, status=status.HTTP_400_BAD_REQUEST)
+
+#     def get(self, request, pk=None, format=None):
+#         if pk:
+#             form = get_object_or_404(JobOnboardingForm, pk=pk, user=request.user)
+#             serializer = JobOnboardingFormSerializer(form)
+#             return Response({
+#                 "message": f"Onboarding form ID {pk} fetched successfully",
+#                 "data": serializer.data
+#             }, status=status.HTTP_200_OK)
+#         else:
+#             forms = JobOnboardingForm.objects.filter(user=request.user)
+#             serializer = JobOnboardingFormSerializer(forms, many=True)
+#             return Response({
+#                 "message": "All onboarding forms fetched successfully",
+#                 "data": serializer.data
+#             }, status=status.HTTP_200_OK)
+
+
+
+#     def patch(self, request, pk, format=None):
+#         try:
+#             instance = JobOnboardingForm.objects.get(pk=pk, user=request.user)
+#         except JobOnboardingForm.DoesNotExist:
+#             return Response({
+#                 "message": f"Onboarding form with ID {pk} does not exist."
+#             }, status=status.HTTP_404_NOT_FOUND)
+
+#         serializer = JobOnboardingFormSerializer(instance, data=request.data, partial=True)
+#         if serializer.is_valid():
+#             serializer.save()
+            
+#             # Trigger WordPress update after successful form update
+#             try:
+#                 # Find the latest job template for this form
+#                 job_template = JobTemplate.objects.filter(
+#                     job_onboarding=instance
+#                 ).order_by('-created_at').first()
+                
+#                 if job_template:
+#                     # Regenerate and update the WordPress post
+#                     updated_template = run_job_template_generation(instance, is_update=True)
+                    
+#                     if updated_template and updated_template.status == 'completed':
+#                         return Response({
+#                             "message": f"Onboarding form ID {pk} updated successfully and WordPress post refreshed.",
+#                             "data": serializer.data
+#                         }, status=status.HTTP_200_OK)
+#                     else:
+#                         return Response({
+#                             "message": f"Form updated but WordPress sync failed or is still processing.",
+#                             "data": serializer.data
+#                         }, status=status.HTTP_200_OK)
+#                 else:
+#                     # If no template exists, create a new one
+#                     run_job_template_generation(instance, is_update=False)
+#                     return Response({
+#                         "message": f"Onboarding form ID {pk} updated successfully. Creating new WordPress post.",
+#                         "data": serializer.data
+#                     }, status=status.HTTP_200_OK)
+                    
+#             except Exception as e:
+#                 # Log the error but don't fail the request
+#                 logger.error(f"WordPress update failed: {str(e)}")
+#                 return Response({
+#                     "message": f"Form updated but WordPress sync failed: {str(e)}",
+#                     "data": serializer.data
+#                 }, status=status.HTTP_200_OK)
+        
+#         return Response({
+#             "message": "Update failed due to invalid data.",
+#             "errors": serializer.errors
+#         }, status=status.HTTP_400_BAD_REQUEST)
+            
+            
+
+            
+
+#     def delete(self, request, pk, format=None):
+#         try:
+#             form = JobOnboardingForm.objects.get(pk=pk, user=request.user)
+#         except JobOnboardingForm.DoesNotExist:
+#             return Response({
+#                 "message": f"Onboarding form with ID {pk} does not exist."
+#             }, status=status.HTTP_404_NOT_FOUND)
+
+#         form.delete()
+#         return Response({
+#             "message": f"Onboarding form ID {pk} deleted successfully."
+#         }, status=status.HTTP_204_NO_CONTENT)
+
+
+
+# test
+
+from rest_framework.pagination import PageNumberPagination
+import math
+from .models import JobOnboardingForm, JobTemplate
+from .serializers import JobOnboardingFormSerializer
+
+class JobOnboardingPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+    def paginate_queryset(self, queryset, request, view=None):
+        self.request = request
+        self.count = queryset.count()
+        self.page_size = self.get_page_size(request) or self.page_size
+
+        try:
+            return super().paginate_queryset(queryset, request, view=view)
+        except Exception:
+            # If page is invalid, don't break — return empty list
+            self.page = None
+            return []
+
+    def get_paginated_response(self, data):
+        total_items = self.count
+        page_size = self.page_size
+        total_pages = math.ceil(total_items / page_size) if page_size else 1
+        current_page = (
+            self.page.number if self.page else int(self.request.query_params.get("page", 1))
+        )
+
+        return Response({
+            "success": True,
+            "message": "Job onboarding forms retrieved successfully.",
+            "pagination": {
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "current_page": current_page,
+                "page_size": page_size,
+            },
+            "data": data if data is not None else [],
+        })
+
 class CreateJobOnboardingFormAPIView(APIView):
     permission_classes = [IsAuthenticated]
+    pagination_class = JobOnboardingPagination
+
+    @property
+    def paginator(self):
+        """
+        The paginator instance associated with the view, or `None`.
+        """
+        if not hasattr(self, '_paginator'):
+            if self.pagination_class is None:
+                self._paginator = None
+            else:
+                self._paginator = self.pagination_class()
+        return self._paginator
+
+    def paginate_queryset(self, queryset):
+        """
+        Return a single page of results, or `None` if pagination is disabled.
+        """
+        if self.paginator is None:
+            return None
+        return self.paginator.paginate_queryset(queryset, self.request, view=self)
+
+    def get_paginated_response(self, data):
+        """
+        Return a paginated style `Response` object for the given output data.
+        """
+        assert self.paginator is not None
+        return self.paginator.get_paginated_response(data)
 
     def post(self, request, format=None):
         user = request.user
@@ -116,13 +326,19 @@ class CreateJobOnboardingFormAPIView(APIView):
             }, status=status.HTTP_200_OK)
         else:
             forms = JobOnboardingForm.objects.filter(user=request.user)
+            
+            # Add pagination for the list view
+            page = self.paginate_queryset(forms)
+            if page is not None:
+                serializer = JobOnboardingFormSerializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            # Fallback if pagination is disabled
             serializer = JobOnboardingFormSerializer(forms, many=True)
             return Response({
                 "message": "All onboarding forms fetched successfully",
                 "data": serializer.data
             }, status=status.HTTP_200_OK)
-
-
 
     def patch(self, request, pk, format=None):
         try:
@@ -135,52 +351,15 @@ class CreateJobOnboardingFormAPIView(APIView):
         serializer = JobOnboardingFormSerializer(instance, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            
-            # Trigger WordPress update after successful form update
-            try:
-                # Find the latest job template for this form
-                job_template = JobTemplate.objects.filter(
-                    job_onboarding=instance
-                ).order_by('-created_at').first()
-                
-                if job_template:
-                    # Regenerate and update the WordPress post
-                    updated_template = run_job_template_generation(instance, is_update=True)
-                    
-                    if updated_template and updated_template.status == 'completed':
-                        return Response({
-                            "message": f"Onboarding form ID {pk} updated successfully and WordPress post refreshed.",
-                            "data": serializer.data
-                        }, status=status.HTTP_200_OK)
-                    else:
-                        return Response({
-                            "message": f"Form updated but WordPress sync failed or is still processing.",
-                            "data": serializer.data
-                        }, status=status.HTTP_200_OK)
-                else:
-                    # If no template exists, create a new one
-                    run_job_template_generation(instance, is_update=False)
-                    return Response({
-                        "message": f"Onboarding form ID {pk} updated successfully. Creating new WordPress post.",
-                        "data": serializer.data
-                    }, status=status.HTTP_200_OK)
-                    
-            except Exception as e:
-                # Log the error but don't fail the request
-                logger.error(f"WordPress update failed: {str(e)}")
-                return Response({
-                    "message": f"Form updated but WordPress sync failed: {str(e)}",
-                    "data": serializer.data
-                }, status=status.HTTP_200_OK)
+            return Response({
+                "message": f"Onboarding form ID {pk} updated successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
         
         return Response({
             "message": "Update failed due to invalid data.",
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
-            
-            
-
-            
 
     def delete(self, request, pk, format=None):
         try:
@@ -194,9 +373,6 @@ class CreateJobOnboardingFormAPIView(APIView):
         return Response({
             "message": f"Onboarding form ID {pk} deleted successfully."
         }, status=status.HTTP_204_NO_CONTENT)
-
-
-
 
 
 
@@ -1859,6 +2035,11 @@ class MyJobPostsView(APIView):
             "message": "Job post retrieved successfully.",
             "data": serializer.data,
         }, status=status.HTTP_200_OK)
+
+
+
+
+
 
 class MyJobBlogsView(APIView):
     permission_classes = [IsAuthenticated]
