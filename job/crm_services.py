@@ -737,10 +737,8 @@ class JobberService(CRMServiceBase):
         headers = {
             "Authorization": f"Bearer {self.connection.oauth_access_token}",
             "Content-Type": "application/json",
-            "X-JOBBER-API-VERSION": "2023-12-01",  # Required API version
+            "X-JOBBER-GRAPHQL-VERSION": "2023-08-18",  # Required API version
         }
-        if getattr(self.connection, "graphql_version", None):
-            headers["X-JOBBER-GRAPHQL-VERSION"] = self.connection.graphql_version
         return headers
 
     def verify_connection(self):
@@ -819,53 +817,62 @@ class JobberService(CRMServiceBase):
                 }
                 first: 100
             ) {
-            nodes {
-            id
-            jobNumber
-            title
-            jobStatus
+                nodes {
+                    id
+                    jobNumber
+                    title
+                    jobStatus
                     total
                     createdAt
                     updatedAt
-            client {
-                id
-                firstName
-                lastName
+                    client {
+                        id
+                        firstName
+                        lastName
                         email
                         phone
-            }
-            property {
-                id
-                address {
-                street1
-                city
-                postalCode
+                    }
+                    property {
+                        id
+                        address {
+                            street1
+                            city
+                            postalCode
+                        }
+                    }
                 }
             }
-            }
-        }
         }
         """
-
+        
         variables = {}
         if last_check_time:
             variables["updatedSince"] = last_check_time.isoformat()
         
+        headers = self._get_headers()
+        
+        print(f"Jobber GraphQL request headers: {headers}")
+        print(f"Jobber GraphQL request variables: {variables}")
+        
         try:
             response = requests.post(
                 self.graphql_endpoint,
-                headers=self._get_headers(),
+                headers=headers,
                 json={"query": query, "variables": variables},
                 timeout=30
             )
 
+            print(f"Jobber API response status: {response.status_code}")
+            print(f"Jobber API response text: {response.text}")
+            
             if response.status_code == 200:
                 result = response.json()
-
+                
                 if "errors" in result:
                     error_msg = result["errors"][0].get("message", "Unknown GraphQL error")
                     return {"success": False, "error": f"GraphQL Error: {error_msg}"}
-
+                
+                # GraphQL response format
                 jobs = result.get("data", {}).get("jobs", {}).get("nodes", [])
                 print(f"Found {len(jobs)} completed jobs from Jobber")
                 
