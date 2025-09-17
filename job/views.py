@@ -422,6 +422,25 @@ class OAuthInitAPIView(APIView):
             from urllib.parse import urlencode
             return f"https://api.getjobber.com/oauth/authorize?{urlencode(params)}"
         
+        elif crm_type.provider == 'zendesk':
+            # Zendesk OAuth2 scopes
+            scopes = [
+                'read',
+                'write'
+            ]
+            scope_string = ' '.join(scopes)
+            subdomain = settings.ZENDESK_SUBDOMAIN
+            params = {
+                'client_id': settings.ZENDESK_CLIENT_ID,
+                'response_type': 'code',
+                'redirect_uri': redirect_uri,
+                'scope': scope_string,
+                'state': state,
+            }
+            
+            from urllib.parse import urlencode
+            return f"https://{subdomain}.zendesk.com/oauth/authorizations/new?{urlencode(params)}"
+        
         # Add other CRM providers here
         return None
 
@@ -580,6 +599,32 @@ class OAuthCallbackAPIView(APIView):
                     
             except requests.RequestException as e:
                 print(f"Jobber token exchange error: {str(e)}")
+
+        elif crm_type.provider == 'zendesk':
+            subdomain = settings.ZENDESK_SUBDOMAIN
+            token_url = f"https://{subdomain}.zendesk.com/oauth/tokens"
+            
+            data = {
+                'grant_type': 'authorization_code',
+                'client_id': settings.ZENDESK_CLIENT_ID,
+                'client_secret': settings.ZENDESK_CLIENT_SECRET,
+                'redirect_uri': redirect_uri,
+                'code': code
+            }
+            
+            try:
+                response = requests.post(token_url, data=data)
+                print(f"Zendesk token exchange response: {response.status_code}")
+                print(f"Zendesk token exchange response text: {response.text}")
+                
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    # Log the detailed error
+                    print(f"Zendesk token exchange failed: {response.text}")
+                    
+            except requests.RequestException as e:
+                print(f"Zendesk token exchange error: {str(e)}")
 
                     
         
@@ -2615,6 +2660,177 @@ class JobberJobCloseAPIView(APIView):
         won = request.data.get('won', True)
         crm_service = get_crm_service(connection)
         result = crm_service.close_job(job_id, won)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================== Zendesk CRM Operations ====================
+
+class ZendeskContactCreateAPIView(APIView):
+    """Create a contact in Zendesk CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'zendesk':
+            return Response(
+                {"error": "This endpoint is only for Zendesk CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.create_contact(request.data)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_201_CREATED)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ZendeskContactUpdateAPIView(APIView):
+    """Update a contact in Zendesk CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def patch(self, request, connection_id, contact_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'zendesk':
+            return Response(
+                {"error": "This endpoint is only for Zendesk CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.update_contact(contact_id, request.data)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ZendeskContactListAPIView(APIView):
+    """List contacts from Zendesk CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'zendesk':
+            return Response(
+                {"error": "This endpoint is only for Zendesk CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get pagination parameters
+        limit = int(request.GET.get('limit', 100))
+        offset = int(request.GET.get('offset', 0))
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.list_contacts(limit=limit, offset=offset)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ZendeskTicketCreateAPIView(APIView):
+    """Create a ticket in Zendesk CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'zendesk':
+            return Response(
+                {"error": "This endpoint is only for Zendesk CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.create_job(request.data)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_201_CREATED)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ZendeskTicketCloseAPIView(APIView):
+    """Close a ticket in Zendesk CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id, ticket_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'zendesk':
+            return Response(
+                {"error": "This endpoint is only for Zendesk CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        won = request.data.get('won', True)
+        crm_service = get_crm_service(connection)
+        result = crm_service.close_job(ticket_id, won)
         
         if result['success']:
             return Response(result, status=status.HTTP_200_OK)

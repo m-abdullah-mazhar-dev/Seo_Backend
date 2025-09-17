@@ -27,6 +27,13 @@ urlpatterns = [
     path('crm/jobber/connections/<int:connection_id>/jobs/', JobberJobCreateAPIView.as_view(), name='jobber-job-create'),
     path('crm/jobber/connections/<int:connection_id>/jobs/<str:job_id>/close/', JobberJobCloseAPIView.as_view(), name='jobber-job-close'),
 
+    # Zendesk-specific endpoints
+    path('crm/zendesk/connections/<int:connection_id>/contacts/', ZendeskContactListAPIView.as_view(), name='zendesk-contact-list'),
+    path('crm/zendesk/connections/<int:connection_id>/contacts/create/', ZendeskContactCreateAPIView.as_view(), name='zendesk-contact-create'),
+    path('crm/zendesk/connections/<int:connection_id>/contacts/<str:contact_id>/', ZendeskContactUpdateAPIView.as_view(), name='zendesk-contact-update'),
+    path('crm/zendesk/connections/<int:connection_id>/tickets/', ZendeskTicketCreateAPIView.as_view(), name='zendesk-ticket-create'),
+    path('crm/zendesk/connections/<int:connection_id>/tickets/<str:ticket_id>/close/', ZendeskTicketCloseAPIView.as_view(), name='zendesk-ticket-close'),
+
     path('debug/zoho-token/<int:connection_id>/', DebugZohoTokenView.as_view(), name='debug-zoho-token'),
     
     path('feedback/form/<uuid:token>/', feedback_form_view, name='feedback-form'),

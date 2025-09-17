@@ -318,6 +318,28 @@ def check_jobber_closed_jobs():
     
     return results
 
+@shared_task
+def check_zendesk_closed_jobs():
+    """Celery task to check Zendesk CRM for closed tickets and send emails"""
+    logger.info(f"🔄 Zendesk closed tickets check started.")
+    
+    zendesk_connections = CRMConnection.objects.filter(
+        crm_type__provider='zendesk',
+        is_connected=True
+    )
+    
+    results = []
+    
+    for connection in zendesk_connections:
+        result = process_zendesk_connection(connection)
+        results.append({
+            'connection_id': connection.id,
+            'connection_name': connection.connection_name,
+            'result': result
+        })
+    
+    return results
+
 @shared_task(bind=True, max_retries=3)
 def check_hubspot_closed_jobs(self):
     """Celery task to check HubSpot for closed jobs and send emails directly"""
@@ -577,4 +599,94 @@ def send_feedback_email(context):
         
     except Exception as e:
         print(f"Failed to send email: {str(e)}")
+        return False
+
+def process_zendesk_connection(connection):
+    """Process a single Zendesk connection for closed tickets"""
+    crm_service = get_crm_service(connection)
+    
+    # Check if connection is valid
+    if not connection.is_connected:
+        print(f"Skipping {connection.connection_name}: Connection not active")
+        return {"success": False, "error": "CONNECTION_DISCONNECTED", "processed_count": 0}
+    
+    # Get last check time
+    last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
+    
+    # Fetch closed tickets from Zendesk
+    result = crm_service.get_closed_tickets(last_check)
+    
+    if not result['success']:
+        error = result.get('error', 'Unknown error')
+        
+        if 'expired' in error.lower() or 'invalid' in error.lower():
+            # Mark connection as disconnected
+            connection.is_connected = False
+            connection.save()
+            return {"success": False, "error": "TOKEN_EXPIRED", "processed_count": 0}
+        else:
+            return {"success": False, "error": error, "processed_count": 0}
+    
+    closed_tickets = result['data']
+    processed_count = 0
+    
+    for ticket in closed_tickets:
+        ticket_id = ticket.get('id')
+        last_modified = ticket.get('updated_at')
+        
+        if should_process_deal(ticket_id, last_modified, connection):
+            success = process_zendesk_ticket(ticket, connection)
+            if success:
+                processed_count += 1
+    
+    # Update last sync time if we processed any tickets
+    if processed_count > 0:
+        connection.last_sync = timezone.now()
+        connection.save(update_fields=['last_sync'])
+    
+    return {"success": True, "processed_count": processed_count, "total_count": len(closed_tickets)}
+
+def process_zendesk_ticket(ticket, connection):
+    """Process a single Zendesk ticket and send email"""
+    ticket_id = ticket.get('id')
+    
+    # Extract email from ticket (requester or submitter)
+    email = None
+    if 'requester' in ticket and 'email' in ticket['requester']:
+        email = ticket['requester']['email']
+    elif 'submitter' in ticket and 'email' in ticket['submitter']:
+        email = ticket['submitter']['email']
+    
+    if not email or '@' not in email:
+        print(f"Skipping ticket {ticket_id}: No valid email found")
+        return False
+    
+    # Get ticket subject
+    ticket_subject = ticket.get('subject', 'Unknown Ticket')
+    
+    # Create ClientFeedback record
+    feedback = ClientFeedback.objects.create(
+        email=email,
+        deal_name=ticket_subject,
+        deal_id=str(ticket_id),
+        crm_connection=connection,
+        feedback_url_yes=f"https://yourdomain.com/feedback/yes/{uuid.uuid4()}",
+        feedback_url_no=f"https://yourdomain.com/feedback/no/{uuid.uuid4()}"
+    )
+    
+    # Send email using Django's email system
+    context = {
+        'deal_name': ticket_subject,
+        'to_email': email,
+        'feedback_url_yes': feedback.feedback_url_yes,
+        'feedback_url_no': feedback.feedback_url_no
+    }
+    
+    email_sent = send_feedback_email(context)
+    
+    if email_sent:
+        print(f"Successfully sent feedback email for Zendesk ticket {ticket_id} to {email}")
+        return True
+    else:
+        print(f"Failed to send email for Zendesk ticket {ticket_id}")
         return False

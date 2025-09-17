@@ -719,6 +719,330 @@ class JobberService(CRMServiceBase):
         except:
             return f"Jobber Error: HTTP {response.status_code}"
 
+class ZendeskService(CRMServiceBase):
+    """Zendesk CRM service implementation"""
+    
+    def __init__(self, connection):
+        super().__init__(connection)
+        self.subdomain = settings.ZENDESK_SUBDOMAIN
+        self.api_base = f"https://{self.subdomain}.zendesk.com/api/v2"
+    
+    def get_api_base_url(self):
+        return self.api_base
+    
+    def verify_connection(self):
+        """Verify Zendesk connection using OAuth token"""
+        url = f"{self.api_base}/users/me.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return True
+            
+            # If token is expired, try to refresh it
+            if response.status_code == 401:
+                return self.refresh_token()
+                
+            return False
+        except requests.RequestException as e:
+            print(f"Zendesk connection verification error: {str(e)}")
+            return False
+    
+    def refresh_token(self):
+        """Refresh Zendesk access token using refresh token"""
+        if not self.connection.oauth_refresh_token:
+            return False
+        
+        token_url = f"https://{self.subdomain}.zendesk.com/oauth/tokens"
+        
+        data = {
+            'grant_type': 'refresh_token',
+            'client_id': settings.ZENDESK_CLIENT_ID,
+            'client_secret': settings.ZENDESK_CLIENT_SECRET,
+            'refresh_token': self.connection.oauth_refresh_token
+        }
+        
+        try:
+            response = requests.post(token_url, data=data)
+            if response.status_code == 200:
+                token_data = response.json()
+                self.connection.oauth_access_token = token_data['access_token']
+                self.connection.oauth_refresh_token = token_data.get('refresh_token', self.connection.oauth_refresh_token)
+                self.connection.oauth_token_expiry = timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+                self.connection.save()
+                return True
+            else:
+                print(f"Zendesk token refresh failed: {response.text}")
+                return False
+        except requests.RequestException as e:
+            print(f"Zendesk token refresh error: {str(e)}")
+            return False
+    
+    def ensure_valid_token(self):
+        """Ensure we have a valid access token"""
+        if self.connection.is_token_expired():
+            success = self.refresh_token()
+            if not success:
+                # If refresh fails, mark as disconnected
+                self.connection.is_connected = False
+                self.connection.save()
+                return False
+        return True
+    
+    def create_job(self, job_data):
+        """Create a ticket in Zendesk CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token. Please re-authenticate with Zendesk."}
+        
+        url = f"{self.api_base}/tickets.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Map job data to Zendesk ticket structure
+        zendesk_ticket_data = {
+            "ticket": {
+                "subject": job_data.get("job_name", "New Job"),
+                "description": job_data.get("description", ""),
+                "status": "new",  # Initial status
+                "priority": job_data.get("priority", "normal"),
+                "type": job_data.get("type", "task"),
+                "custom_fields": [
+                    {
+                        "id": 360000000000,  # Custom field ID for amount
+                        "value": job_data.get("amount", "")
+                    }
+                ]
+            }
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=zendesk_ticket_data)
+            print(f"Zendesk create ticket response: {response.status_code}")
+            print(f"Zendesk create ticket response text: {response.text}")
+            
+            if response.status_code == 201:
+                result = response.json()
+                ticket_id = result.get("ticket", {}).get("id")
+                return {"success": True, "job_id": ticket_id, "data": result}
+            else:
+                error_msg = self.handle_zendesk_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def close_job(self, job_id, won=True):
+        """Close a ticket in Zendesk CRM (mark as solved or closed)"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Failed to refresh access token"}
+        
+        url = f"{self.api_base}/tickets/{job_id}.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Determine the status based on won/lost
+        status = "solved" if won else "closed"
+        
+        data = {
+            "ticket": {
+                "status": status
+            }
+        }
+        
+        try:
+            response = requests.put(url, headers=headers, json=data)
+            print(f"Zendesk close ticket response: {response.status_code}")
+            print(f"Zendesk close ticket response text: {response.text}")
+            
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                error_msg = self.handle_zendesk_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def create_contact(self, contact_data):
+        """Create a user in Zendesk CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/users.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Map contact data to Zendesk user structure
+        zendesk_user_data = {
+            "user": {
+                "name": f"{contact_data.get('first_name', '')} {contact_data.get('last_name', '')}".strip(),
+                "email": contact_data.get("email", ""),
+                "phone": contact_data.get("phone", ""),
+                "user_fields": {
+                    "address": contact_data.get("street", ""),
+                    "city": contact_data.get("city", ""),
+                    "state": contact_data.get("state", ""),
+                    "postal_code": contact_data.get("postal_code", ""),
+                    "country": contact_data.get("country", "US")
+                },
+                "notes": contact_data.get("notes", "")
+            }
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=zendesk_user_data)
+            print(f"Zendesk create user response: {response.status_code}")
+            
+            if response.status_code == 201:
+                result = response.json()
+                user_id = result.get("user", {}).get("id")
+                return {"success": True, "contact_id": user_id, "data": result}
+            else:
+                error_msg = self.handle_zendesk_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def update_contact(self, contact_id, contact_data):
+        """Update a user in Zendesk CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/users/{contact_id}.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Map contact data to Zendesk user structure
+        zendesk_user_data = {
+            "user": {
+                "name": f"{contact_data.get('first_name', '')} {contact_data.get('last_name', '')}".strip(),
+                "email": contact_data.get("email", ""),
+                "phone": contact_data.get("phone", ""),
+                "user_fields": {
+                    "address": contact_data.get("street", ""),
+                    "city": contact_data.get("city", ""),
+                    "state": contact_data.get("state", ""),
+                    "postal_code": contact_data.get("postal_code", ""),
+                    "country": contact_data.get("country", "US")
+                },
+                "notes": contact_data.get("notes", "")
+            }
+        }
+        
+        try:
+            response = requests.put(url, headers=headers, json=zendesk_user_data)
+            print(f"Zendesk update user response: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                return {"success": True, "data": result}
+            else:
+                error_msg = self.handle_zendesk_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def list_contacts(self, limit=100, offset=0):
+        """List users from Zendesk CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/users.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        params = {
+            "per_page": limit,
+            "page": (offset // limit) + 1
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            print(f"Zendesk list users response: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                users = result.get("users", [])
+                return {"success": True, "contacts": users, "data": result}
+            else:
+                error_msg = self.handle_zendesk_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def get_closed_tickets(self, last_check_time=None):
+        """Fetch closed tickets from Zendesk CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/search.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Build query for closed tickets
+        query = "type:ticket status:solved"
+        
+        # Add time filter if provided
+        if last_check_time:
+            last_check_str = last_check_time.strftime("%Y-%m-%d")
+            query += f" updated>{last_check_str}"
+        
+        params = {
+            "query": query,
+            "sort_by": "updated_at",
+            "sort_order": "asc",
+            "per_page": 100
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            print(f"Zendesk get closed tickets response: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                tickets = result.get("results", [])
+                print(f"Found {len(tickets)} closed tickets")
+                return {"success": True, "data": tickets}
+            else:
+                error_msg = self.handle_zendesk_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def handle_zendesk_error(self, response):
+        """Handle Zendesk API errors consistently"""
+        try:
+            error_data = response.json()
+            if 'error' in error_data:
+                error_msg = error_data['error']
+                error_description = error_data.get('description', '')
+                return f"Zendesk Error: {error_msg} - {error_description}"
+            else:
+                return f"Zendesk Error: {response.text}"
+        except:
+            return f"Zendesk Error: HTTP {response.status_code}"
+
 def get_crm_service(connection):
     """Factory function to get the appropriate CRM service"""
     if connection.crm_type.provider == 'hubspot':
@@ -729,6 +1053,8 @@ def get_crm_service(connection):
         return ZohoCRMService(connection)
     elif connection.crm_type.provider == 'jobber':
         return JobberService(connection)
+    elif connection.crm_type.provider == 'zendesk':
+        return ZendeskService(connection)
     else:
         raise ValueError(f"Unsupported CRM provider: {connection.crm_type.provider}")
     
