@@ -809,10 +809,10 @@ class JobberService(CRMServiceBase):
         
         # GraphQL query to get completed jobs with contact information
         query = """
-        query GetCompletedJobs($updatedSince: DateTime) {
+        query GetCompletedJobs($updatedSince: DateRange) {
             jobs(
                 filter: {
-                    jobStatus: COMPLETED
+                    status: COMPLETED
                     updatedSince: $updatedSince
                 }
                 first: 100
@@ -821,7 +821,7 @@ class JobberService(CRMServiceBase):
                     id
                     jobNumber
                     title
-                    jobStatus
+                    status
                     total
                     createdAt
                     updatedAt
@@ -829,8 +829,12 @@ class JobberService(CRMServiceBase):
                         id
                         firstName
                         lastName
-                        email
-                        phone
+                        emails {
+                            address
+                        }
+                        phones {
+                            number
+                        }
                     }
                     property {
                         id
@@ -847,7 +851,11 @@ class JobberService(CRMServiceBase):
         
         variables = {}
         if last_check_time:
-            variables["updatedSince"] = last_check_time.isoformat()
+            # DateRange format for Jobber API
+            variables["updatedSince"] = {
+                "start": last_check_time.isoformat(),
+                "end": timezone.now().isoformat()
+            }
         
         headers = self._get_headers()
         
@@ -879,20 +887,34 @@ class JobberService(CRMServiceBase):
                 # Convert to consistent format
                 formatted_jobs = []
                 for job in jobs:
+                    client = job.get("client", {})
+                    
+                    # Extract email from emails array
+                    email = ""
+                    emails = client.get("emails", [])
+                    if emails and len(emails) > 0:
+                        email = emails[0].get("address", "")
+                    
+                    # Extract phone from phones array
+                    phone = ""
+                    phones = client.get("phones", [])
+                    if phones and len(phones) > 0:
+                        phone = phones[0].get("number", "")
+                    
                     formatted_job = {
                         "id": job.get("id"),
                         "title": job.get("title", "Unknown Job"),
                         "job_number": job.get("jobNumber"),
-                        "status": job.get("jobStatus"),
+                        "status": job.get("status"),
                         "total": job.get("total"),
                         "created_at": job.get("createdAt"),
                         "updated_at": job.get("updatedAt"),
                         "contact": {
-                            "id": job.get("client", {}).get("id"),
-                            "first_name": job.get("client", {}).get("firstName", ""),
-                            "last_name": job.get("client", {}).get("lastName", ""),
-                            "email": job.get("client", {}).get("email", ""),
-                            "phone": job.get("client", {}).get("phone", "")
+                            "id": client.get("id"),
+                            "first_name": client.get("firstName", ""),
+                            "last_name": client.get("lastName", ""),
+                            "email": email,
+                            "phone": phone
                         },
                         "property": job.get("property", {})
                     }
