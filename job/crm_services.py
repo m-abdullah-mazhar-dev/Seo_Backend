@@ -664,6 +664,44 @@ class JobberService(CRMServiceBase):
         except requests.RequestException as e:
             return {"success": False, "error": f"Request failed: {str(e)}"}
     
+    def get_closed_jobs(self, last_check_time=None):
+        """Fetch closed jobs from Jobber CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/api/v1/jobs"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Build query parameters for closed jobs
+        params = {
+            "status": "completed",  # Only get completed jobs
+            "limit": 100,
+            "include": "contact"  # Include contact information
+        }
+        
+        # Add time filter if provided
+        if last_check_time:
+            params["updated_since"] = last_check_time.isoformat()
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            print(f"Jobber get closed jobs response: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                jobs = result.get("jobs", [])
+                print(f"Found {len(jobs)} closed jobs")
+                return {"success": True, "data": jobs}
+            else:
+                error_msg = self.handle_jobber_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
     def handle_jobber_error(self, response):
         """Handle Jobber API errors consistently"""
         try:
