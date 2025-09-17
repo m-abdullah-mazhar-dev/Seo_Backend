@@ -34,6 +34,13 @@ urlpatterns = [
     path('crm/zendesk/connections/<int:connection_id>/tickets/', ZendeskTicketCreateAPIView.as_view(), name='zendesk-ticket-create'),
     path('crm/zendesk/connections/<int:connection_id>/tickets/<str:ticket_id>/close/', ZendeskTicketCloseAPIView.as_view(), name='zendesk-ticket-close'),
 
+    # SalesForce-specific endpoints
+    path('crm/salesforce/connections/<int:connection_id>/contacts/', SalesForceContactListAPIView.as_view(), name='salesforce-contact-list'),
+    path('crm/salesforce/connections/<int:connection_id>/contacts/create/', SalesForceContactCreateAPIView.as_view(), name='salesforce-contact-create'),
+    path('crm/salesforce/connections/<int:connection_id>/contacts/<str:contact_id>/', SalesForceContactUpdateAPIView.as_view(), name='salesforce-contact-update'),
+    path('crm/salesforce/connections/<int:connection_id>/opportunities/', SalesForceOpportunityCreateAPIView.as_view(), name='salesforce-opportunity-create'),
+    path('crm/salesforce/connections/<int:connection_id>/opportunities/<str:opportunity_id>/close/', SalesForceOpportunityCloseAPIView.as_view(), name='salesforce-opportunity-close'),
+
     path('debug/zoho-token/<int:connection_id>/', DebugZohoTokenView.as_view(), name='debug-zoho-token'),
     
     path('feedback/form/<uuid:token>/', feedback_form_view, name='feedback-form'),

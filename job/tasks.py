@@ -340,6 +340,28 @@ def check_zendesk_closed_jobs():
     
     return results
 
+@shared_task
+def check_salesforce_closed_jobs():
+    """Celery task to check SalesForce CRM for closed opportunities and send emails"""
+    logger.info(f"🔄 SalesForce closed opportunities check started.")
+    
+    salesforce_connections = CRMConnection.objects.filter(
+        crm_type__provider='salesforce',
+        is_connected=True
+    )
+    
+    results = []
+    
+    for connection in salesforce_connections:
+        result = process_salesforce_connection(connection)
+        results.append({
+            'connection_id': connection.id,
+            'connection_name': connection.connection_name,
+            'result': result
+        })
+    
+    return results
+
 @shared_task(bind=True, max_retries=3)
 def check_hubspot_closed_jobs(self):
     """Celery task to check HubSpot for closed jobs and send emails directly"""
@@ -689,4 +711,100 @@ def process_zendesk_ticket(ticket, connection):
         return True
     else:
         print(f"Failed to send email for Zendesk ticket {ticket_id}")
+        return False
+
+def process_salesforce_connection(connection):
+    """Process a single SalesForce connection for closed opportunities"""
+    crm_service = get_crm_service(connection)
+    
+    # Check if connection is valid
+    if not connection.is_connected:
+        print(f"Skipping {connection.connection_name}: Connection not active")
+        return {"success": False, "error": "CONNECTION_DISCONNECTED", "processed_count": 0}
+    
+    # Get last check time
+    last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
+    
+    # Fetch closed opportunities from SalesForce
+    result = crm_service.get_closed_opportunities(last_check)
+    
+    if not result['success']:
+        error = result.get('error', 'Unknown error')
+        
+        if 'expired' in error.lower() or 'invalid' in error.lower():
+            # Mark connection as disconnected
+            connection.is_connected = False
+            connection.save()
+            return {"success": False, "error": "TOKEN_EXPIRED", "processed_count": 0}
+        else:
+            return {"success": False, "error": error, "processed_count": 0}
+    
+    closed_opportunities = result['data']
+    processed_count = 0
+    
+    for opportunity in closed_opportunities:
+        opportunity_id = opportunity.get('Id')
+        last_modified = opportunity.get('LastModifiedDate')
+        
+        if should_process_deal(opportunity_id, last_modified, connection):
+            success = process_salesforce_opportunity(opportunity, connection)
+            if success:
+                processed_count += 1
+    
+    # Update last sync time if we processed any opportunities
+    if processed_count > 0:
+        connection.last_sync = timezone.now()
+        connection.save(update_fields=['last_sync'])
+    
+    return {"success": True, "processed_count": processed_count, "total_count": len(closed_opportunities)}
+
+def process_salesforce_opportunity(opportunity, connection):
+    """Process a single SalesForce opportunity and send email"""
+    opportunity_id = opportunity.get('Id')
+    
+    # Extract email from opportunity (Contact or Account)
+    email = None
+    
+    # Try to get email from Contact first
+    if 'Contact' in opportunity and opportunity['Contact']:
+        contact = opportunity['Contact']
+        email = contact.get('Email')
+    
+    # If no contact email, try Account email
+    if not email and 'Account' in opportunity and opportunity['Account']:
+        account = opportunity['Account']
+        email = account.get('Email__c')  # Custom field for account email
+    
+    if not email or '@' not in email:
+        print(f"Skipping opportunity {opportunity_id}: No valid email found")
+        return False
+    
+    # Get opportunity name
+    opportunity_name = opportunity.get('Name', 'Unknown Opportunity')
+    
+    # Create ClientFeedback record
+    feedback = ClientFeedback.objects.create(
+        email=email,
+        deal_name=opportunity_name,
+        deal_id=str(opportunity_id),
+        crm_connection=connection,
+        feedback_url_yes=f"https://yourdomain.com/feedback/yes/{uuid.uuid4()}",
+        feedback_url_no=f"https://yourdomain.com/feedback/no/{uuid.uuid4()}"
+    )
+    
+    # Send email using Django's email system
+    context = {
+        'deal_name': opportunity_name,
+        'to_email': email,
+        'feedback_url_yes': feedback.feedback_url_yes,
+        'feedback_url_no': feedback.feedback_url_no
+    }
+    
+    email_sent = send_feedback_email(context)
+    
+    if email_sent:
+        print(f"Successfully sent feedback email for SalesForce opportunity {opportunity_id} to {email}")
+        return True
+    else:
+        print(f"Failed to send email for SalesForce opportunity {opportunity_id}")
         return False

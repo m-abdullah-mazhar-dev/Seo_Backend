@@ -1043,6 +1043,329 @@ class ZendeskService(CRMServiceBase):
         except:
             return f"Zendesk Error: HTTP {response.status_code}"
 
+class SalesForceService(CRMServiceBase):
+    """SalesForce CRM service implementation"""
+    
+    def __init__(self, connection):
+        super().__init__(connection)
+        self.instance_url = settings.SALESFORCE_INSTANCE_URL
+        self.api_base = f"{self.instance_url}/services/data/v58.0"
+    
+    def get_api_base_url(self):
+        return self.api_base
+    
+    def verify_connection(self):
+        """Verify SalesForce connection using OAuth token"""
+        url = f"{self.api_base}/sobjects/User/describe"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return True
+            
+            # If token is expired, try to refresh it
+            if response.status_code == 401:
+                return self.refresh_token()
+                
+            return False
+        except requests.RequestException as e:
+            print(f"SalesForce connection verification error: {str(e)}")
+            return False
+    
+    def refresh_token(self):
+        """Refresh SalesForce access token using refresh token"""
+        if not self.connection.oauth_refresh_token:
+            return False
+        
+        token_url = "https://login.salesforce.com/services/oauth2/token"
+        
+        data = {
+            'grant_type': 'refresh_token',
+            'client_id': settings.SALESFORCE_CLIENT_ID,
+            'client_secret': settings.SALESFORCE_CLIENT_SECRET,
+            'refresh_token': self.connection.oauth_refresh_token
+        }
+        
+        try:
+            response = requests.post(token_url, data=data)
+            if response.status_code == 200:
+                token_data = response.json()
+                self.connection.oauth_access_token = token_data['access_token']
+                self.connection.oauth_refresh_token = token_data.get('refresh_token', self.connection.oauth_refresh_token)
+                self.connection.oauth_token_expiry = timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+                self.connection.save()
+                return True
+            else:
+                print(f"SalesForce token refresh failed: {response.text}")
+                return False
+        except requests.RequestException as e:
+            print(f"SalesForce token refresh error: {str(e)}")
+            return False
+    
+    def ensure_valid_token(self):
+        """Ensure we have a valid access token"""
+        if self.connection.is_token_expired():
+            success = self.refresh_token()
+            if not success:
+                # If refresh fails, mark as disconnected
+                self.connection.is_connected = False
+                self.connection.save()
+                return False
+        return True
+    
+    def create_job(self, job_data):
+        """Create an opportunity in SalesForce CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token. Please re-authenticate with SalesForce."}
+        
+        url = f"{self.api_base}/sobjects/Opportunity"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Map job data to SalesForce opportunity structure
+        salesforce_opportunity_data = {
+            "Name": job_data.get("job_name", "New Opportunity"),
+            "Description": job_data.get("description", ""),
+            "StageName": "Prospecting",  # Initial stage
+            "Amount": job_data.get("amount", 0),
+            "CloseDate": job_data.get("close_date", (timezone.now() + timedelta(days=30)).strftime("%Y-%m-%d")),
+            "Type": job_data.get("type", "New Customer")
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=salesforce_opportunity_data)
+            print(f"SalesForce create opportunity response: {response.status_code}")
+            print(f"SalesForce create opportunity response text: {response.text}")
+            
+            if response.status_code == 201:
+                result = response.json()
+                opportunity_id = result.get("id")
+                return {"success": True, "job_id": opportunity_id, "data": result}
+            else:
+                error_msg = self.handle_salesforce_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def close_job(self, job_id, won=True):
+        """Close an opportunity in SalesForce CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Failed to refresh access token"}
+        
+        url = f"{self.api_base}/sobjects/Opportunity/{job_id}"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Determine the stage based on won/lost
+        stage = "Closed Won" if won else "Closed Lost"
+        
+        data = {
+            "StageName": stage
+        }
+        
+        try:
+            response = requests.patch(url, headers=headers, json=data)
+            print(f"SalesForce close opportunity response: {response.status_code}")
+            print(f"SalesForce close opportunity response text: {response.text}")
+            
+            if response.status_code == 204:
+                return {"success": True, "data": {"id": job_id, "StageName": stage}}
+            else:
+                error_msg = self.handle_salesforce_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def create_contact(self, contact_data):
+        """Create a contact in SalesForce CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/sobjects/Contact"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Map contact data to SalesForce contact structure
+        salesforce_contact_data = {
+            "FirstName": contact_data.get("first_name", ""),
+            "LastName": contact_data.get("last_name", ""),
+            "Email": contact_data.get("email", ""),
+            "Phone": contact_data.get("phone", ""),
+            "MailingStreet": contact_data.get("street", ""),
+            "MailingCity": contact_data.get("city", ""),
+            "MailingState": contact_data.get("state", ""),
+            "MailingPostalCode": contact_data.get("postal_code", ""),
+            "MailingCountry": contact_data.get("country", "US"),
+            "Description": contact_data.get("notes", "")
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=salesforce_contact_data)
+            print(f"SalesForce create contact response: {response.status_code}")
+            
+            if response.status_code == 201:
+                result = response.json()
+                contact_id = result.get("id")
+                return {"success": True, "contact_id": contact_id, "data": result}
+            else:
+                error_msg = self.handle_salesforce_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def update_contact(self, contact_id, contact_data):
+        """Update a contact in SalesForce CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/sobjects/Contact/{contact_id}"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Map contact data to SalesForce contact structure
+        salesforce_contact_data = {
+            "FirstName": contact_data.get("first_name", ""),
+            "LastName": contact_data.get("last_name", ""),
+            "Email": contact_data.get("email", ""),
+            "Phone": contact_data.get("phone", ""),
+            "MailingStreet": contact_data.get("street", ""),
+            "MailingCity": contact_data.get("city", ""),
+            "MailingState": contact_data.get("state", ""),
+            "MailingPostalCode": contact_data.get("postal_code", ""),
+            "MailingCountry": contact_data.get("country", "US"),
+            "Description": contact_data.get("notes", "")
+        }
+        
+        try:
+            response = requests.patch(url, headers=headers, json=salesforce_contact_data)
+            print(f"SalesForce update contact response: {response.status_code}")
+            
+            if response.status_code == 204:
+                return {"success": True, "data": {"id": contact_id}}
+            else:
+                error_msg = self.handle_salesforce_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def list_contacts(self, limit=100, offset=0):
+        """List contacts from SalesForce CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/query"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # SOQL query to get contacts
+        soql_query = f"""
+        SELECT Id, FirstName, LastName, Email, Phone, MailingStreet, 
+               MailingCity, MailingState, MailingPostalCode, MailingCountry, 
+               Description, CreatedDate, LastModifiedDate
+        FROM Contact 
+        ORDER BY LastModifiedDate DESC 
+        LIMIT {limit} OFFSET {offset}
+        """
+        
+        params = {
+            "q": soql_query
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            print(f"SalesForce list contacts response: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                contacts = result.get("records", [])
+                return {"success": True, "contacts": contacts, "data": result}
+            else:
+                error_msg = self.handle_salesforce_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def get_closed_opportunities(self, last_check_time=None):
+        """Fetch closed opportunities from SalesForce CRM"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "Invalid or expired token"}
+        
+        url = f"{self.api_base}/query"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Build SOQL query for closed opportunities
+        soql_query = """
+        SELECT Id, Name, Description, StageName, Amount, CloseDate, 
+               AccountId, Account.Name, Account.Email__c,
+               ContactId, Contact.Email, Contact.FirstName, Contact.LastName,
+               CreatedDate, LastModifiedDate
+        FROM Opportunity 
+        WHERE StageName IN ('Closed Won', 'Closed Lost')
+        """
+        
+        # Add time filter if provided
+        if last_check_time:
+            last_check_str = last_check_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            soql_query += f" AND LastModifiedDate > {last_check_str}"
+        
+        soql_query += " ORDER BY LastModifiedDate ASC LIMIT 100"
+        
+        params = {
+            "q": soql_query
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            print(f"SalesForce get closed opportunities response: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                opportunities = result.get("records", [])
+                print(f"Found {len(opportunities)} closed opportunities")
+                return {"success": True, "data": opportunities}
+            else:
+                error_msg = self.handle_salesforce_error(response)
+                return {"success": False, "error": error_msg}
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+    def handle_salesforce_error(self, response):
+        """Handle SalesForce API errors consistently"""
+        try:
+            error_data = response.json()
+            if 'error' in error_data:
+                error_msg = error_data['error']
+                error_description = error_data.get('error_description', '')
+                return f"SalesForce Error: {error_msg} - {error_description}"
+            else:
+                return f"SalesForce Error: {response.text}"
+        except:
+            return f"SalesForce Error: HTTP {response.status_code}"
+
 def get_crm_service(connection):
     """Factory function to get the appropriate CRM service"""
     if connection.crm_type.provider == 'hubspot':
@@ -1055,6 +1378,8 @@ def get_crm_service(connection):
         return JobberService(connection)
     elif connection.crm_type.provider == 'zendesk':
         return ZendeskService(connection)
+    elif connection.crm_type.provider == 'salesforce':
+        return SalesForceService(connection)
     else:
         raise ValueError(f"Unsupported CRM provider: {connection.crm_type.provider}")
     

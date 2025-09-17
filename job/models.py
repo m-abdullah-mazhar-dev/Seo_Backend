@@ -308,7 +308,7 @@ class CRMType(models.Model):
         ('hubspot', 'HubSpot'),
         ('pipedrive', 'Pipedrive'),
         ('zoho', 'Zoho CRM'),
-        ('salesforce', 'Salesforce'),
+        ('salesforce', 'SalesForce CRM'),
         ('jobber', 'Jobber CRM'),
         ('zendesk', 'Zendesk CRM'),
     ]
@@ -341,6 +341,8 @@ class CRMType(models.Model):
                 self.oauth_authorize_url = 'https://api.getjobber.com/oauth/authorize'
             elif self.provider == 'zendesk':
                 self.oauth_authorize_url = 'https://{subdomain}.zendesk.com/oauth/authorizations/new'
+            elif self.provider == 'salesforce':
+                self.oauth_authorize_url = 'https://login.salesforce.com/services/oauth2/authorize'
                 
         if not self.oauth_token_url:
             if self.provider == 'hubspot':
@@ -351,6 +353,8 @@ class CRMType(models.Model):
                 self.oauth_token_url = 'https://api.getjobber.com/oauth/token'
             elif self.provider == 'zendesk':
                 self.oauth_token_url = 'https://{subdomain}.zendesk.com/oauth/tokens'
+            elif self.provider == 'salesforce':
+                self.oauth_token_url = 'https://login.salesforce.com/services/oauth2/token'
                 
         super().save(*args, **kwargs)
 
