@@ -47,10 +47,13 @@ def get_or_create_category(wp_conn, slug, name=None, description=""):
 
 import re
 
-def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload):
+
+# utils.py
+from .models import JobTemplate
+def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None):
     wp_conn = wp_conn
 
-        # Prefer AI request payload if available (more reliable than free-text AI response)
+    # Prefer AI request payload if available
     if api_payload:
         route = api_payload.get("route", "OTR")
         position = api_payload.get("position", "Driver")
@@ -71,25 +74,20 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload):
         else:
             pay_structure = "Pay Not Specified"
             pay_value = "N/A"
-    # title = f"{job_form.company_name} - Hiring CDL Drivers"
+    
     title = f"{route.upper()} {position} – {equipment} – {pay_structure} – {pay_value}"
     map_html = generate_map_html(api_payload)
 
-        # POST-PROCESSING: Clean up the HTML content for local routes
+    # POST-PROCESSING: Clean up the HTML content for local routes
     hiring_area = api_payload.get("hiring_area", {})
     route_type = hiring_area.get("type", "").lower()
 
     if route_type == "local":
-        # Simple string replacement for the exact pattern
         html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
-
     elif route_type == "otr":
-    # For OTR routes, remove only the empty "States:" line but keep "HIRING FROM: + Regions: USA"
-        html_content = html_content.replace('States:', '')  # Remove just the States label
+        html_content = html_content.replace('States:', '')
 
-        
-        # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
-     # ADD COST STRUCTURE TO HTML CONTENT AFTER DRIVER BENEFITS SECTION
+    # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
     cost_structure = api_payload.get("cost_structure")
     if cost_structure:
         cost_html = f"""
@@ -113,36 +111,28 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload):
             cost_html += "</ul>"
         
         # Insert cost structure after DRIVER BENEFITS section
-        # Look for the DRIVER BENEFITS section in the HTML
         benefits_pattern = "DRIVER BENEFITS:"
         benefits_index = html_content.find(benefits_pattern)
         
         if benefits_index != -1:
             # Find the end of the DRIVER BENEFITS section
-            # Look for the next section header (all caps followed by colon)
             import re
             next_section_match = re.search(r'<br>[A-Z\s]+:', html_content[benefits_index:])
             
             if next_section_match:
-                # Insert after DRIVER BENEFITS section but before next section
                 insert_index = benefits_index + next_section_match.start()
                 html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
             else:
-                # If no next section found, insert at the end of DRIVER BENEFITS
-                # Find the end of the list items
                 ul_end_pattern = "</ul>"
                 ul_end_index = html_content.find(ul_end_pattern, benefits_index)
                 
                 if ul_end_index != -1:
-                    # Insert after the closing </ul> of benefits
                     insert_index = ul_end_index + len(ul_end_pattern)
                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
                 else:
-                    # Fallback: insert after DRIVER BENEFITS text
                     insert_index = benefits_index + len(benefits_pattern)
                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
         else:
-            # Fallback: append to end if DRIVER BENEFITS section not found
             html_content += cost_html
 
     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
@@ -152,7 +142,6 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload):
         "title": title,
         "slug": slug,
         "content": f"<div>{html_content}</div>{map_html}",
-        # "content": f"<div>{html_content}</div>",
         "status": "publish",
         "categories": [category_id], 
     }
@@ -162,27 +151,38 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content,api_payload):
         'Content-Type': 'application/json',
     }
 
-    response = requests.post(
-        f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts",
-        headers=headers,
-        json=post_data
-    )
+    # Determine the API endpoint based on whether we're creating or updating
+    if page_id:
+        # Update existing post
+        endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{page_id}"
+        response = requests.put(endpoint, headers=headers, json=post_data)
+    else:
+        # Create new post
+        endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts"
+        response = requests.post(endpoint, headers=headers, json=post_data)
 
     if response.status_code not in [200, 201]:
-        raise Exception(f"WordPress upload failed: {response.text}")
+        raise Exception(f"WordPress {'update' if page_id else 'upload'} failed: {response.text}")
     
     response_data = response.json()
-    page_url = response_data.get('link') # This is the published URL
+    page_url = response_data.get('link')  # This is the published URL
     post_id = response_data.get('id')
 
-    # Update the JobTask with the URL and publish date
-    # job_task.wp_page_url = page_url
-    # job_task.published_date = timezone.now()
-    # job_task.save()
+    # Store the WordPress post ID for future updates
+    if not page_id and post_id:
+        # Update the JobTemplate with the post ID if this is a new post
+        job_template = JobTemplate.objects.filter(job_onboarding=job_form).order_by('-created_at').first()
+        if job_template:
+            job_template.wp_page_id = post_id
+            job_template.save()
 
-    logger.info(f"✅ Job Post uploaded to WordPress. URL: {page_url}")
+    logger.info(f"✅ Job Post {'updated' if page_id else 'uploaded'} to WordPress. URL: {page_url}")
 
     return page_url
+
+
+
+
 
 
 
@@ -867,3 +867,6 @@ def fetch_wordpress_post_data(wp_connection, post_url):
     except Exception as e:
         print(f"Error fetching WordPress post data: {e}")
         return None
+    
+
+

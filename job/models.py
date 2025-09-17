@@ -24,6 +24,11 @@ class JobOnboardingForm(models.Model):
     truck_make_year = models.CharField(max_length=255)
     hauling_equipment = models.TextField()
 
+
+
+    wordpress_post_id = models.IntegerField(null=True, blank=True)
+    wordpress_page_url = models.URLField(null=True, blank=True)
+
     # -------------------- Vehicle Details --------------------
     transmission_automatic = models.BooleanField(default=False)
     transmission_manual = models.BooleanField(default=False)

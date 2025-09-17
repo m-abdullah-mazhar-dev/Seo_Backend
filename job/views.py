@@ -122,6 +122,8 @@ class CreateJobOnboardingFormAPIView(APIView):
                 "data": serializer.data
             }, status=status.HTTP_200_OK)
 
+    
+
     def patch(self, request, pk, format=None):
         try:
             instance = JobOnboardingForm.objects.get(pk=pk, user=request.user)
@@ -133,15 +135,43 @@ class CreateJobOnboardingFormAPIView(APIView):
         serializer = JobOnboardingFormSerializer(instance, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            
+            # Trigger WordPress update after successful form update
+            run_job_template_generation(instance, is_update=True)
+            try:
+                # Find the latest job template for this form
+                job_template = JobTemplate.objects.filter(
+                    job_onboarding=instance
+                ).order_by('-created_at').first()
+                
+                if job_template:
+                    # Regenerate and update the WordPress post
+                    run_job_template_generation(instance)
+                    return Response({
+                        "message": f"Onboarding form ID {pk} updated successfully and WordPress post refreshed.",
+                        "data": serializer.data
+                    }, status=status.HTTP_200_OK)
+            except Exception as e:
+                # Log the error but don't fail the request
+                logger.error(f"WordPress update failed: {str(e)}")
+                return Response({
+                    "message": f"Form updated but WordPress sync failed: {str(e)}",
+                    "data": serializer.data
+                }, status=status.HTTP_200_OK)
+            
             return Response({
                 "message": f"Onboarding form ID {pk} updated successfully.",
                 "data": serializer.data
             }, status=status.HTTP_200_OK)
-
+        
         return Response({
             "message": "Update failed due to invalid data.",
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
+            
+            
+
+            
 
     def delete(self, request, pk, format=None):
         try:
@@ -1519,7 +1549,8 @@ def map_job_form_to_api_payload(job_form):
 
 
 
-def run_job_template_generation(job_task_or_form):
+# utils.py
+def run_job_template_generation(job_task_or_form, is_update=False):
     try:
         if isinstance(job_task_or_form, JobTask):
             job_onboarding = job_task_or_form.job_onboarding
@@ -1532,23 +1563,36 @@ def run_job_template_generation(job_task_or_form):
             logger.warning("⚠ No job onboarding form found.")
             return
 
-
-        job_template = JobTemplate.objects.create(
-            user=user,
-            job_onboarding=job_onboarding,
-            status='processing'
-        )
-
+        # For updates, find the existing template instead of creating a new one
+        if is_update:
+            job_template = JobTemplate.objects.filter(
+                job_onboarding=job_onboarding
+            ).order_by('-created_at').first()
+            
+            if not job_template:
+                logger.warning("No existing job template found for update.")
+                return
+                
+            job_template.status = 'processing'
+        else:
+            # Create new template for new submissions
+            job_template = JobTemplate.objects.create(
+                user=user,
+                job_onboarding=job_onboarding,
+                status='processing'
+            )
 
         # Map job form data
         api_payload = map_job_form_to_api_payload(job_onboarding)
         job_template.ai_request_payload = api_payload
         job_template.save()
+        
         response = requests.post(
             f"{settings.AI_API_DOMAIN}/generate_job_template",
             json=api_payload,
             timeout=60
         )
+        
         if response.status_code != 200:
             logger.error(f"❌ API error: {response.text}")
             job_template.status = 'failed'
@@ -1564,47 +1608,44 @@ def run_job_template_generation(job_task_or_form):
             job_template.save()
             return
         
-
-         # Update job template with AI response
+        # Update job template with AI response
         job_template.ai_response_payload = data
         job_template.generated_content = job_template_content
-
-        
 
         if job_onboarding.position and job_onboarding.position.lower() in ["owner operator", "lease-to-rent", "lease-to-purchase"]:
             cost_structure = map_cost_structure(job_onboarding)
             data["cost_structure"] = cost_structure
             logger.info(f"✅ Added cost structure to response: {cost_structure}")
 
-
-
-        # WordPress upload
+        # WordPress upload/update
         if hasattr(user, 'wordpress_connection'):
             html_content = process_job_template_html(job_template_content)
+            
+            # For updates, use the existing page ID if available
+            page_id = job_template.wp_page_id if is_update else None
             page_url = upload_job_post_to_wordpress(
                 job_onboarding,
                 user.wordpress_connection,
                 html_content,
-                api_payload=data
+                api_payload=data,
+                page_id=page_id  # Pass page_id for updates
             )
 
             if page_url:
                 job_template.wp_page_url = page_url
                 job_template.status = 'completed'
                 job_template.published_date = timezone.now()
-
-                logger.info(f"✅ Job uploaded for {job_onboarding.company_name}")
+                logger.info(f"✅ Job {'updated' if is_update else 'uploaded'} for {job_onboarding.company_name}")
             else:
                 job_template.status = 'failed'
         
-            job_template.save()
+        job_template.save()
 
     except Exception as e:
         logger.exception(f"❌ Error in run_job_template_generation: {str(e)}")
         if job_template:
             job_template.status = 'failed'
             job_template.save()
-
 
 
 
