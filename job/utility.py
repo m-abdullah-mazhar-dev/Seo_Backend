@@ -45,12 +45,13 @@ def get_or_create_category(wp_conn, slug, name=None, description=""):
     else:
         raise Exception(f"❌ Failed to create '{slug}' category: {response.text}")
 
+
+
+
 import re
 
 
-# utils.py
-from .models import JobTemplate
-def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None):
+def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
     wp_conn = wp_conn
 
     # Prefer AI request payload if available
@@ -169,22 +170,13 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, p
     post_id = response_data.get('id')
 
     # Store the WordPress post ID for future updates
-    if not page_id and post_id:
-        # Update the JobTemplate with the post ID if this is a new post
-        job_template = JobTemplate.objects.filter(job_onboarding=job_form).order_by('-created_at').first()
-        if job_template:
-            job_template.wp_page_id = post_id
-            job_template.save()
+    if job_template and not job_template.wp_page_id and post_id:
+        job_template.wp_page_id = post_id
+        job_template.save()
 
     logger.info(f"✅ Job Post {'updated' if page_id else 'uploaded'} to WordPress. URL: {page_url}")
 
     return page_url
-
-
-
-
-
-
 
 
 
