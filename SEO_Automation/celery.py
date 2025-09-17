@@ -51,6 +51,14 @@ app.conf.beat_schedule = {
             'expires': 7200,
         }
     },
+    # Jobber task (new)
+    'check-jobber-closed-jobs': {
+        'task': 'job.tasks.check_jobber_closed_jobs',
+        'schedule': crontab(minute=0, hour='*/3'),  # Run every 3 hours
+        'options': {
+            'expires': 10800,  # 3 hours
+        }
+    },
 }
 
 
