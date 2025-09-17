@@ -812,7 +812,7 @@ class JobberService(CRMServiceBase):
         query GetCompletedJobs {
             jobs(
                 filter: {
-                    jobStatus: COMPLETED
+                    status: COMPLETED
                 }
                 first: 100
             ) {
