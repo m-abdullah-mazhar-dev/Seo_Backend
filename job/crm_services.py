@@ -397,6 +397,407 @@ class PipedriveService(CRMServiceBase):
         except requests.RequestException as e:
             return {"success": False, "error": str(e)}
 
+# class JobberService(CRMServiceBase):
+#     """Jobber CRM service implementation"""
+    
+#     def __init__(self, connection):
+#         super().__init__(connection)
+#         self.api_base = "https://api.getjobber.com"
+    
+#     def get_api_base_url(self):
+#         return self.api_base
+    
+#     def verify_connection(self):
+#         """Verify Jobber connection using OAuth token"""
+#         url = f"{self.api_base}/api/v1/users/me"
+        
+#         headers = {
+#             "Authorization": f"Bearer {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         try:
+#             response = requests.get(url, headers=headers)
+#             if response.status_code == 200:
+#                 return True
+            
+#             # If token is expired, try to refresh it
+#             if response.status_code == 401:
+#                 return self.refresh_token()
+                
+#             return False
+#         except requests.RequestException as e:
+#             print(f"Jobber connection verification error: {str(e)}")
+#             return False
+    
+#     def refresh_token(self):
+#         """Refresh Jobber access token using refresh token"""
+#         if not self.connection.oauth_refresh_token:
+#             return False
+        
+#         token_url = f"{self.api_base}/oauth/token"
+        
+#         data = {
+#             'grant_type': 'refresh_token',
+#             'client_id': settings.JOBBER_CLIENT_ID,
+#             'client_secret': settings.JOBBER_CLIENT_SECRET,
+#             'refresh_token': self.connection.oauth_refresh_token
+#         }
+        
+#         try:
+#             response = requests.post(token_url, data=data)
+#             if response.status_code == 200:
+#                 token_data = response.json()
+#                 self.connection.oauth_access_token = token_data['access_token']
+#                 self.connection.oauth_refresh_token = token_data.get('refresh_token', self.connection.oauth_refresh_token)
+#                 self.connection.oauth_token_expiry = timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+#                 self.connection.save()
+#                 return True
+#             else:
+#                 print(f"Jobber token refresh failed: {response.text}")
+#                 return False
+#         except requests.RequestException as e:
+#             print(f"Jobber token refresh error: {str(e)}")
+#             return False
+    
+#     def ensure_valid_token(self):
+#         """Ensure we have a valid access token"""
+#         if self.connection.is_token_expired():
+#             success = self.refresh_token()
+#             if not success:
+#                 # If refresh fails, mark as disconnected
+#                 self.connection.is_connected = False
+#                 self.connection.save()
+#                 return False
+#         return True
+    
+#     def create_job(self, job_data):
+#         """Create a job in Jobber CRM"""
+#         if not self.ensure_valid_token():
+#             return {"success": False, "error": "Invalid or expired token. Please re-authenticate with Jobber."}
+        
+#         url = f"{self.api_base}/api/v1/jobs"
+        
+#         headers = {
+#             "Authorization": f"Bearer {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         # Map job data to Jobber job structure
+#         jobber_job_data = {
+#             "title": job_data.get("job_name", "New Job"),
+#             "description": job_data.get("description", ""),
+#             "status": "scheduled",  # Initial status
+#             "start_date": job_data.get("start_date", ""),
+#             "end_date": job_data.get("end_date", ""),
+#             "estimated_duration": job_data.get("estimated_duration", ""),
+#             "price": job_data.get("amount", ""),
+#         }
+        
+#         # Remove empty fields
+#         jobber_job_data = {k: v for k, v in jobber_job_data.items() if v is not None and v != ""}
+        
+#         try:
+#             response = requests.post(url, headers=headers, json=jobber_job_data)
+#             print(f"Jobber create job response: {response.status_code}")
+#             print(f"Jobber create job response text: {response.text}")
+            
+#             if response.status_code == 201:
+#                 result = response.json()
+#                 job_id = result.get("id")
+#                 return {"success": True, "job_id": job_id, "data": result}
+#             else:
+#                 error_msg = self.handle_jobber_error(response)
+#                 return {"success": False, "error": error_msg}
+#         except requests.RequestException as e:
+#             return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+#     def close_job(self, job_id, won=True):
+#         """Close a job in Jobber CRM (mark as completed or cancelled)"""
+#         if not self.ensure_valid_token():
+#             return {"success": False, "error": "Failed to refresh access token"}
+        
+#         url = f"{self.api_base}/api/v1/jobs/{job_id}"
+        
+#         headers = {
+#             "Authorization": f"Bearer {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         # Determine the status based on won/lost
+#         status = "completed" if won else "cancelled"
+        
+#         data = {
+#             "status": status
+#         }
+        
+#         try:
+#             response = requests.patch(url, headers=headers, json=data)
+#             print(f"Jobber close job response: {response.status_code}")
+#             print(f"Jobber close job response text: {response.text}")
+            
+#             if response.status_code == 200:
+#                 return {"success": True, "data": response.json()}
+#             else:
+#                 error_msg = self.handle_jobber_error(response)
+#                 return {"success": False, "error": error_msg}
+#         except requests.RequestException as e:
+#             return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+#     def create_contact(self, contact_data):
+#         """Create a contact in Jobber CRM"""
+#         if not self.ensure_valid_token():
+#             return {"success": False, "error": "Invalid or expired token"}
+        
+#         url = f"{self.api_base}/api/v1/contacts"
+        
+#         headers = {
+#             "Authorization": f"Bearer {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         # Map contact data to Jobber contact structure
+#         jobber_contact_data = {
+#             "first_name": contact_data.get("first_name", ""),
+#             "last_name": contact_data.get("last_name", ""),
+#             "email": contact_data.get("email", ""),
+#             "phone": contact_data.get("phone", ""),
+#             "address": {
+#                 "street": contact_data.get("street", ""),
+#                 "city": contact_data.get("city", ""),
+#                 "state": contact_data.get("state", ""),
+#                 "postal_code": contact_data.get("postal_code", ""),
+#                 "country": contact_data.get("country", "US")
+#             },
+#             "notes": contact_data.get("notes", "")
+#         }
+        
+#         # Remove empty fields
+#         jobber_contact_data = {k: v for k, v in jobber_contact_data.items() if v is not None and v != ""}
+        
+#         try:
+#             response = requests.post(url, headers=headers, json=jobber_contact_data)
+#             print(f"Jobber create contact response: {response.status_code}")
+            
+#             if response.status_code == 201:
+#                 result = response.json()
+#                 contact_id = result.get("id")
+#                 return {"success": True, "contact_id": contact_id, "data": result}
+#             else:
+#                 error_msg = self.handle_jobber_error(response)
+#                 return {"success": False, "error": error_msg}
+#         except requests.RequestException as e:
+#             return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+#     def update_contact(self, contact_id, contact_data):
+#         """Update a contact in Jobber CRM"""
+#         if not self.ensure_valid_token():
+#             return {"success": False, "error": "Invalid or expired token"}
+        
+#         url = f"{self.api_base}/api/v1/contacts/{contact_id}"
+        
+#         headers = {
+#             "Authorization": f"Bearer {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         # Map contact data to Jobber contact structure
+#         jobber_contact_data = {
+#             "first_name": contact_data.get("first_name", ""),
+#             "last_name": contact_data.get("last_name", ""),
+#             "email": contact_data.get("email", ""),
+#             "phone": contact_data.get("phone", ""),
+#             "address": {
+#                 "street": contact_data.get("street", ""),
+#                 "city": contact_data.get("city", ""),
+#                 "state": contact_data.get("state", ""),
+#                 "postal_code": contact_data.get("postal_code", ""),
+#                 "country": contact_data.get("country", "US")
+#             },
+#             "notes": contact_data.get("notes", "")
+#         }
+        
+#         # Remove empty fields
+#         jobber_contact_data = {k: v for k, v in jobber_contact_data.items() if v is not None and v != ""}
+        
+#         try:
+#             response = requests.patch(url, headers=headers, json=jobber_contact_data)
+#             print(f"Jobber update contact response: {response.status_code}")
+            
+#             if response.status_code == 200:
+#                 result = response.json()
+#                 return {"success": True, "data": result}
+#             else:
+#                 error_msg = self.handle_jobber_error(response)
+#                 return {"success": False, "error": error_msg}
+#         except requests.RequestException as e:
+#             return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+#     def list_contacts(self, limit=100, offset=0):
+#         """List contacts from Jobber CRM"""
+#         if not self.ensure_valid_token():
+#             return {"success": False, "error": "Invalid or expired token"}
+        
+#         url = f"{self.api_base}/api/v1/contacts"
+        
+#         headers = {
+#             "Authorization": f"Bearer {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         params = {
+#             "limit": limit,
+#             "offset": offset
+#         }
+        
+#         try:
+#             response = requests.get(url, headers=headers, params=params)
+#             print(f"Jobber list contacts response: {response.status_code}")
+            
+#             if response.status_code == 200:
+#                 result = response.json()
+#                 contacts = result.get("contacts", [])
+#                 return {"success": True, "contacts": contacts, "data": result}
+#             else:
+#                 error_msg = self.handle_jobber_error(response)
+#                 return {"success": False, "error": error_msg}
+#         except requests.RequestException as e:
+#             return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+#     def get_closed_jobs(self, last_check_time=None):
+#         """Fetch closed jobs from Jobber CRM"""
+#         if not self.ensure_valid_token():
+#             return {"success": False, "error": "Invalid or expired token"}
+        
+#         url = f"{self.api_base}/api/v1/jobs"
+        
+#         headers = {
+#             "Authorization": f"Bearer {self.connection.oauth_access_token}",
+#             "Content-Type": "application/json"
+#         }
+        
+#         # Build query parameters for closed jobs
+#         params = {
+#             "status": "completed",  # Only get completed jobs
+#             "limit": 100,
+#             "include": "contact"  # Include contact information
+#         }
+        
+#         # Add time filter if provided
+#         if last_check_time:
+#             params["updated_since"] = last_check_time.isoformat()
+        
+#         try:
+#             response = requests.get(url, headers=headers, params=params)
+#             print(f"Jobber get closed jobs response: {response.status_code}")
+            
+#             if response.status_code == 200:
+#                 result = response.json()
+#                 jobs = result.get("jobs", [])
+#                 print(f"Found {len(jobs)} closed jobs")
+#                 return {"success": True, "data": jobs}
+#             else:
+#                 error_msg = self.handle_jobber_error(response)
+#                 return {"success": False, "error": error_msg}
+#         except requests.RequestException as e:
+#             return {"success": False, "error": f"Request failed: {str(e)}"}
+    
+#     def handle_jobber_error(self, response):
+#         """Handle Jobber API errors consistently"""
+#         try:
+#             error_data = response.json()
+#             if 'errors' in error_data:
+#                 errors = error_data['errors']
+#                 if isinstance(errors, list) and len(errors) > 0:
+#                     error_msg = errors[0].get('message', 'Unknown error')
+#                     error_code = errors[0].get('code', 'UNKNOWN')
+#                     return f"Jobber Error {error_code}: {error_msg}"
+#                 else:
+#                     return f"Jobber Error: {str(errors)}"
+#             else:
+#                 return f"Jobber Error: {response.text}"
+#         except:
+#             return f"Jobber Error: HTTP {response.status_code}"
+
+
+
+class JobberService(CRMServiceBase):
+    ENDPOINT = "https://api.getjobber.com/api/graphql"
+
+    def _h(self):
+        """Prepare headers for Jobber GraphQL requests"""
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json",
+        }
+        if getattr(self.connection, "graphql_version", None):
+            headers["X-JOBBER-GRAPHQL-VERSION"] = self.connection.graphql_version
+        return headers
+
+    def verify_connection(self):
+        """Check if the Jobber connection is valid by querying account info"""
+        query = {"query": "query { account { id name } }"}
+        try:
+            r = requests.post(self.ENDPOINT, headers=self._h(), json=query, timeout=30)
+            return r.status_code == 200 and "data" in r.json()
+        except requests.RequestException:
+            return False
+        
+    def get_jobs(self):
+        """Fetch jobs from Jobber with proper error handling"""
+        query = """
+        query GetJobs {
+        jobs {
+            nodes {
+            id
+            jobNumber
+            title
+            jobStatus
+            billingType
+            client {
+                id
+                firstName
+                lastName
+            }
+            property {
+                id
+                address {
+                street1
+                city
+                postalCode
+                }
+            }
+            total
+            createdAt
+            updatedAt
+            }
+        }
+        }
+        """
+
+        try:
+            response = requests.post(
+                self.ENDPOINT,
+                headers=self._h(),
+                json={"query": query},
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+
+                if "errors" in result:
+                    return {"success": False, "error": result["errors"]}
+
+                jobs = result.get("data", {}).get("jobs", {}).get("nodes", [])
+                return {"success": True, "data": jobs}
+
+            return {"success": False, "error": response.text}
+
+        except requests.RequestException as e:
+            return {"success": False, "error": str(e)}
+
+
 def get_crm_service(connection):
     """Factory function to get the appropriate CRM service"""
     if connection.crm_type.provider == 'hubspot':
@@ -405,6 +806,8 @@ def get_crm_service(connection):
         return PipedriveService(connection)
     elif connection.crm_type.provider == 'zoho':
         return ZohoCRMService(connection)
+    elif connection.crm_type.provider == 'jobber':
+        return JobberService(connection)
     else:
         raise ValueError(f"Unsupported CRM provider: {connection.crm_type.provider}")
     

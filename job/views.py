@@ -431,6 +431,18 @@ class OAuthInitAPIView(APIView):
             from urllib.parse import urlencode
             return f"https://accounts.zoho.com/oauth/v2/auth?{urlencode(params)}"
         
+        elif crm_type.provider == 'jobber':
+            from urllib.parse import urlencode
+            # Jobber OAuth 2.0 authorization URL
+            params = {
+                "client_id": settings.JOBBER_CLIENT_ID,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": "graphql_api",
+                "state": state,
+            }
+            return f"https://api.getjobber.com/api/oauth/authorize?{urlencode(params)}"
+        
         # Add other CRM providers here
         return None
 
@@ -565,9 +577,29 @@ class OAuthCallbackAPIView(APIView):
             except requests.RequestException as e:
                 print(f"Zoho token exchange error: {str(e)}")
 
-                    
+        elif crm_type.provider == 'jobber':
+                url = "https://api.getjobber.com/api/oauth/token"
+                data = {
+                    'grant_type': 'authorization_code',
+                    'client_id': settings.JOBBER_CLIENT_ID,
+                    'client_secret': settings.JOBBER_CLIENT_SECRET,
+                    'redirect_uri': redirect_uri,
+                    'code': code
+                }
+                headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        else:
+                logger.error(f"❌ Unsupported CRM provider: {crm_type.provider}")
+                return None
+
+        response = requests.post(url, data=data, headers=headers)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logger.error(f"❌ Token exchange failed ({crm_type.provider}): {response.text}")
+            return None
+
         
-        return None
+        
     
 class DebugZohoTokenView(APIView):
     """Debug view to check Zoho token scopes"""
@@ -2444,3 +2476,174 @@ class JobContentAnalyticsView(APIView):
         except Exception as e:
             print(f"Error in JobContentAnalyticsView: {str(e)}")
             return Response({"error": str(e)}, status=500)
+
+
+# ==================== Jobber CRM Contact Operations ====================
+
+class JobberContactCreateAPIView(APIView):
+    """Create a contact in Jobber CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'jobber':
+            return Response(
+                {"error": "This endpoint is only for Jobber CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.create_contact(request.data)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_201_CREATED)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class JobberContactUpdateAPIView(APIView):
+    """Update a contact in Jobber CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def patch(self, request, connection_id, contact_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'jobber':
+            return Response(
+                {"error": "This endpoint is only for Jobber CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.update_contact(contact_id, request.data)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class JobberContactListAPIView(APIView):
+    """List contacts from Jobber CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'jobber':
+            return Response(
+                {"error": "This endpoint is only for Jobber CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get pagination parameters
+        limit = int(request.GET.get('limit', 100))
+        offset = int(request.GET.get('offset', 0))
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.list_contacts(limit=limit, offset=offset)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class JobberJobCreateAPIView(APIView):
+    """Create a job in Jobber CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'jobber':
+            return Response(
+                {"error": "This endpoint is only for Jobber CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.create_job(request.data)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_201_CREATED)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class JobberJobCloseAPIView(APIView):
+    """Close a job in Jobber CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id, job_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'jobber':
+            return Response(
+                {"error": "This endpoint is only for Jobber CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        won = request.data.get('won', True)
+        crm_service = get_crm_service(connection)
+        result = crm_service.close_job(job_id, won)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)

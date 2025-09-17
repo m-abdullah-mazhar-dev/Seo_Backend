@@ -20,6 +20,13 @@ urlpatterns = [
     path('crm/connections/<int:connection_id>/jobs/',  CRMJobCreateAPIView.as_view(), name='crm-job-create'),
     path('crm/connections/<int:connection_id>/jobs/<str:job_id>/close/',  CRMJobCloseAPIView.as_view(), name='crm-job-close'),
 
+    # Jobber-specific endpoints
+    path('crm/jobber/connections/<int:connection_id>/contacts/', JobberContactListAPIView.as_view(), name='jobber-contact-list'),
+    path('crm/jobber/connections/<int:connection_id>/contacts/create/', JobberContactCreateAPIView.as_view(), name='jobber-contact-create'),
+    path('crm/jobber/connections/<int:connection_id>/contacts/<str:contact_id>/', JobberContactUpdateAPIView.as_view(), name='jobber-contact-update'),
+    path('crm/jobber/connections/<int:connection_id>/jobs/', JobberJobCreateAPIView.as_view(), name='jobber-job-create'),
+    path('crm/jobber/connections/<int:connection_id>/jobs/<str:job_id>/close/', JobberJobCloseAPIView.as_view(), name='jobber-job-close'),
+
     path('debug/zoho-token/<int:connection_id>/', DebugZohoTokenView.as_view(), name='debug-zoho-token'),
     
     path('feedback/form/<uuid:token>/', feedback_form_view, name='feedback-form'),
