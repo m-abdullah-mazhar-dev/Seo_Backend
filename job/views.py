@@ -1051,6 +1051,7 @@ class AllFeedbackFormResponsesAPIView(APIView):
                 # Feedback details
                 'feedback_id': response.feedback.id,
                 'email': response.feedback.email,
+                'name': response.feedback.metadata.get("contact_name"),
                 'job_id': response.feedback.job_id,
                 'service_area': response.feedback.service_area,
                 'is_satisfied': response.feedback.is_satisfied,
