@@ -1,4 +1,6 @@
 # crm/tasks.py
+import random
+import re
 from celery import shared_task
 from django.utils import timezone
 from django.conf import settings
@@ -160,6 +162,17 @@ def process_closed_deal(deal, connection):
         print(f"Skipping deal {deal_id}: No valid email found")
         return False
     
+    # 🔥 NEW: Extract client name from email for sub-domain
+    client_name = email.split('@')[0]  # Get part before @
+    client_name = client_name.lower()   # Convert to lowercase
+    client_name = re.sub(r'[^a-z0-9]', '', client_name)  # Remove special chars
+    
+    # Agar client_name empty hai to random ID use karo
+    if not client_name:
+        client_name = f"client{random.randint(1000, 9999)}"
+    
+    print(f"Client sub-domain name: {client_name}")
+
     # Get contact name from deal
     contact_name = ''
     contact_info = deal.get('Contact_Name', {})
@@ -181,12 +194,16 @@ def process_closed_deal(deal, connection):
             'close_date': deal.get('Closing_Date', ''),
             'contact_name': contact_name,
             'description': deal.get('Description', ''),
-            'last_activity_time': deal.get('Last_Activity_Time', '')
+            'last_activity_time': deal.get('Last_Activity_Time', ''),
+            'client_subdomain': client_name  # 
         }
     )
     
     # Generate feedback URLs
-    base_url = settings.FRONTEND_URL.rstrip('/')
+    # base_url = settings.FRONTEND_URL.rstrip('/')
+    # yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
+    # no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+    base_url = f"https://{client_name}.seo.galaxywholesales.com".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
@@ -209,7 +226,8 @@ def process_closed_deal(deal, connection):
         'yes_url': yes_url,
         'no_url': no_url,
         'from_email': settings.DEFAULT_FROM_EMAIL,
-        'current_date': timezone.now().isoformat()
+        'current_date': timezone.now().isoformat(),
+        'client_subdomain': client_name  # 🔥 Send to n8n
     }
     
     # Send to n8n webhook
@@ -408,6 +426,13 @@ def process_hubspot_deal(deal, connection):
         print(f"Skipping deal {deal_id}: No valid email found")
         return False
     
+    client_name = email.split('@')[0]
+    client_name = client_name.lower()
+    client_name = re.sub(r'[^a-z0-9]', '', client_name)
+    
+    if not client_name:
+        client_name = f"client{random.randint(1000, 9999)}"
+    
     # Get contact name
     contact_name = ""
     contacts = deal.get('contacts', [])
@@ -430,12 +455,20 @@ def process_hubspot_deal(deal, connection):
             'close_date': deal.get('close_date', ''),
             'contact_name': contact_name,
             'description': deal.get('description', ''),
-            'contacts': deal.get('contacts', [])
+            'contacts': deal.get('contacts', []),
+            'client_subdomain': client_name  # 🔥 NEW
+
+
         }
     )
     
-    # Generate feedback URLs
-    base_url = settings.FRONTEND_URL.rstrip('/')
+    # # Generate feedback URLs
+    # base_url = settings.FRONTEND_URL.rstrip('/')
+    # yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
+    # no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+
+        # 🔥 UPDATED: Generate feedback URLs with client-specific sub-domain
+    base_url = f"https://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
@@ -509,7 +542,13 @@ def process_jobber_job(job, connection):
     if not email or '@' not in email:
         print(f"Skipping job {job_id}: No valid email found")
         return False
+    # 🔥 NEW: Extract client name from email for sub-domain
+    client_name = email.split('@')[0]
+    client_name = client_name.lower()
+    client_name = re.sub(r'[^a-z0-9]', '', client_name)
     
+    if not client_name:
+        client_name = f"client{random.randint(1000, 9999)}"
     # Get contact name
     contact = job.get('contact', {})
     contact_name = f"{contact.get('first_name', '')} {contact.get('last_name', '')}".strip()
@@ -527,14 +566,17 @@ def process_jobber_job(job, connection):
             'start_date': job.get('start_date', ''),
             'contact_name': contact_name,
             'description': job.get('description', ''),
-            'status': job.get('status', '')
+            'status': job.get('status', ''),
+            'client_subdomain': client_name  # 🔥 NEW
         }
     )
     
     # Generate feedback URLs
-    base_url = settings.FRONTEND_URL.rstrip('/')
+    base_url = f"https://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+
+
     
     # Prepare context for email template
     context = {
