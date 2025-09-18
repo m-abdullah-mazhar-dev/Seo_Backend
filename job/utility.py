@@ -862,3 +862,51 @@ def fetch_wordpress_post_data(wp_connection, post_url):
     
 
 
+
+import requests
+import logging
+
+logger = logging.getLogger(__name__)
+
+def delete_wordpress_post(wp_conn, post_id):
+    """
+    Delete a WordPress post by ID
+    """
+    try:
+        if not wp_conn or not post_id:
+            logger.warning("Missing WordPress connection or post ID")
+            return False
+            
+        headers = {
+            'Authorization': f'Basic {wp_conn.access_token}',
+            'Content-Type': 'application/json',
+        }
+        
+        
+        response = requests.delete(
+            f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{post_id}",
+            headers=headers,
+            params={'force': 'false'}  
+        )
+        
+        if response.status_code in [200, 202]:
+            logger.info(f"✅ WordPress post {post_id} moved to trash successfully")
+            return True
+        else:
+
+            response = requests.delete(
+                f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{post_id}",
+                headers=headers,
+                params={'force': 'true'}  # Permanent delete
+            )
+            
+            if response.status_code in [200, 202]:
+                logger.info(f"✅ WordPress post {post_id} permanently deleted successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to delete WordPress post {post_id}: {response.text}")
+                return False
+                
+    except Exception as e:
+        logger.error(f"❌ Error deleting WordPress post {post_id}: {str(e)}")
+        return False
