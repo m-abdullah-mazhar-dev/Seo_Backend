@@ -1030,14 +1030,18 @@ def submit_feedback_form(request, token):
 class AllFeedbackFormResponsesAPIView(APIView):
     """Get ALL feedback form responses (Admin only)"""
     permission_classes = [IsAuthenticated]  # Only admin can access
-    
+
     def get(self, request):
         # Get all feedback form responses with related feedback data
         form_responses = FeedbackFormResponse.objects.all().select_related('feedback')
-        
-        # Serialize the data
+
+        # Apply pagination
+        paginator = JobPostsPagination()
+        paginated_queryset = paginator.paginate_queryset(form_responses, request, view=self)
+
+        # Serialize only the paginated data
         data = []
-        for response in form_responses:
+        for response in paginated_queryset:
             data.append({
                 'id': response.id,
                 'satisfaction_level': response.satisfaction_level,
@@ -1047,7 +1051,7 @@ class AllFeedbackFormResponsesAPIView(APIView):
                 'would_recommend': response.would_recommend,
                 'contact_permission': response.contact_permission,
                 'created_at': response.created_at,
-                
+
                 # Feedback details
                 'feedback_id': response.feedback.id,
                 'email': response.feedback.email,
@@ -1059,11 +1063,10 @@ class AllFeedbackFormResponsesAPIView(APIView):
                 'user_id': response.feedback.user.id if response.feedback.user else None,
                 'user_email': response.feedback.user.email if response.feedback.user else None,
             })
-        
-        return Response({
-            'count': len(data),
-            'results': data
-        })
+
+        # Use custom paginated response
+        return paginator.get_paginated_response(data)
+
 
 class FeedbackFormResponseByIdAPIView(APIView):
     """Get specific feedback form response by ID (Admin only)"""
