@@ -197,7 +197,6 @@ from .serializers import JobOnboardingFormSerializer
 
 
 
-# test
 
 from rest_framework.pagination import PageNumberPagination
 import math
@@ -361,6 +360,7 @@ class CreateJobOnboardingFormAPIView(APIView):
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
 
+
     def delete(self, request, pk, format=None):
         try:
             form = JobOnboardingForm.objects.get(pk=pk, user=request.user)
@@ -369,7 +369,17 @@ class CreateJobOnboardingFormAPIView(APIView):
                 "message": f"Onboarding form with ID {pk} does not exist."
             }, status=status.HTTP_404_NOT_FOUND)
 
+
+        job_templates = JobTemplate.objects.filter(job_onboarding=form)
+        
+
+        for job_template in job_templates:
+            if job_template.wp_page_id and hasattr(request.user, 'wordpress_connection'):
+                from .utility import delete_wordpress_post
+                delete_wordpress_post(request.user.wordpress_connection, job_template.wp_page_id)
+        
         form.delete()
+        
         return Response({
             "message": f"Onboarding form ID {pk} deleted successfully."
         }, status=status.HTTP_204_NO_CONTENT)
