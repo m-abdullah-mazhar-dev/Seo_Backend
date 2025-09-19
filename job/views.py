@@ -673,6 +673,11 @@ class OAuthInitAPIView(APIView):
                 "code_challenge_method": "S256",
             }
             # Return both URL and code_verifier for Salesforce
+            # Use test.salesforce.com for sandbox (uncomment the line below if using sandbox)
+            # return {
+            #     "url": f"https://test.salesforce.com/services/oauth2/authorize?{urlencode(params)}",
+            #     "code_verifier": code_verifier
+            # }
             return {
                 "url": f"https://login.salesforce.com/services/oauth2/authorize?{urlencode(params)}",
                 "code_verifier": code_verifier
@@ -878,6 +883,8 @@ class OAuthCallbackAPIView(APIView):
                 logger.error(f"❌ Jobber token exchange error: {str(e)}")
                 
         elif crm_type.provider == 'salesforce':
+            # Use test.salesforce.com for sandbox (uncomment the line below if using sandbox)
+            # url = "https://test.salesforce.com/services/oauth2/token"
             url = "https://login.salesforce.com/services/oauth2/token"
             data = {
                 'grant_type': 'authorization_code',
