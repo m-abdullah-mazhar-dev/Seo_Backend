@@ -59,6 +59,14 @@ app.conf.beat_schedule = {
             'expires': 10800,  # 3 hours
         }
     },
+    # Salesforce task (new)
+    'check-salesforce-closed-jobs': {
+        'task': 'job.tasks.check_salesforce_closed_jobs',
+        'schedule': crontab(minute=15, hour='*/4'),  # Run every 4 hours, 15 minutes offset
+        'options': {
+            'expires': 14400,  # 4 hours
+        }
+    },
 }
 
 

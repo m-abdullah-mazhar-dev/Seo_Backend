@@ -343,6 +343,8 @@ class CRMType(models.Model):
                 self.oauth_authorize_url = 'https://accounts.zoho.com/oauth/v2/auth'
             elif self.provider == 'jobber':
                 self.oauth_authorize_url = 'https://secure.getjobber.com/oauth/authorize'
+            elif self.provider == 'salesforce':
+                self.oauth_authorize_url = 'https://login.salesforce.com/services/oauth2/authorize'
                 
         if not self.oauth_token_url:
             if self.provider == 'hubspot':
@@ -351,6 +353,8 @@ class CRMType(models.Model):
                 self.oauth_token_url = 'https://accounts.zoho.com/oauth/v2/token'
             elif self.provider == 'jobber':
                 self.oauth_token_url = 'https://api.getjobber.com/oauth/token'
+            elif self.provider == 'salesforce':
+                self.oauth_token_url = 'https://login.salesforce.com/services/oauth2/token'
                 
         super().save(*args, **kwargs)
 

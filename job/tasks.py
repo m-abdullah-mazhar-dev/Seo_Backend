@@ -366,6 +366,36 @@ def check_hubspot_closed_jobs(self):
     
     return results
 
+@shared_task(bind=True, max_retries=3)
+def check_salesforce_closed_jobs(self):
+    """Celery task to check Salesforce for closed jobs and send emails directly"""
+    logger.info(f"🔄 Salesforce closed jobs check started.")
+    
+    salesforce_connections = CRMConnection.objects.filter(
+        crm_type__provider='salesforce',
+        is_connected=True
+    )
+    
+    results = []
+    
+    for connection in salesforce_connections:
+        if should_skip_due_to_rate_limit(connection):
+            print(f"Skipping {connection.connection_name} due to recent rate limit")
+            continue
+            
+        result = process_salesforce_connection(connection)
+        results.append({
+            'connection_id': connection.id,
+            'connection_name': connection.connection_name,
+            'result': result
+        })
+        
+        if result.get('error') == 'RATE_LIMIT_EXCEEDED':
+            handle_rate_limit(connection)
+            self.retry(countdown=3600, max_retries=3)
+    
+    return results
+
 # tasks.py
 def process_hubspot_connection(connection):
     """Process a single HubSpot connection for closed deals with token handling"""
@@ -584,6 +614,116 @@ def process_jobber_job(job, connection):
         'no_url': no_url,
         'job_id': job_id,
         'deal_name': job.get('title', 'Unknown Job'),
+        'from_email': settings.DEFAULT_FROM_EMAIL,
+        'to_email': email,
+        'contact_name': contact_name,
+        'current_date': timezone.now(),
+    }
+    
+    # Send email directly using Django's email system
+    return send_feedback_email(context)
+
+def process_salesforce_connection(connection):
+    """Process a single Salesforce connection for closed deals with token handling"""
+    crm_service = get_crm_service(connection)
+    
+    # Check if connection is valid
+    if not connection.is_connected:
+        print(f"Skipping {connection.connection_name}: Connection not active")
+        return {"success": False, "error": "CONNECTION_DISCONNECTED", "processed_count": 0}
+    
+    # Get last check time
+    last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
+    
+    # Fetch closed deals
+    result = crm_service.get_closed_deals(last_check)
+    
+    if not result['success']:
+        error = result.get('error', 'Unknown error')
+        
+        if error == 'TOKEN_EXPIRED':
+            # Mark connection as disconnected
+            connection.is_connected = False
+            connection.save()
+            return {"success": False, "error": "TOKEN_EXPIRED", "processed_count": 0}
+        elif error == 'RATE_LIMIT_EXCEEDED':
+            return {"success": False, "error": "RATE_LIMIT_EXCEEDED"}
+        else:
+            return {"success": False, "error": error, "processed_count": 0}
+    
+    closed_deals = result['data']
+    processed_count = 0
+    
+    for deal in closed_deals:
+        deal_id = deal.get('id')
+        last_modified = deal.get('last_modified')
+        
+        if should_process_deal(deal_id, last_modified, connection):
+            success = process_salesforce_deal(deal, connection)
+            if success:
+                processed_count += 1
+    
+    # Update last sync time if we processed any deals
+    if processed_count > 0:
+        connection.last_sync = timezone.now()
+        connection.save(update_fields=['last_sync'])
+    
+    return {"success": True, "processed_count": processed_count, "total_count": len(closed_deals)}
+
+def process_salesforce_deal(deal, connection):
+    """Process a single Salesforce deal and send email directly"""
+    deal_id = deal.get('id')
+    
+    # Extract email using Salesforce service
+    crm_service = get_crm_service(connection)
+    email = crm_service.extract_email_from_deal(deal)
+    
+    if not email or not crm_service.is_valid_email(email):
+        print(f"Skipping deal {deal_id}: No valid email found")
+        return False
+    
+    client_name = email.split('@')[0]
+    client_name = client_name.lower()
+    client_name = re.sub(r'[^a-z0-9]', '', client_name)
+    
+    if not client_name:
+        client_name = f"client{random.randint(1000, 9999)}"
+    
+    # Get contact name
+    contact_name = ""
+    contact = deal.get('contact', {})
+    if contact:
+        contact_name = f"{contact.get('Name', '')}".strip()
+    
+    # Create feedback record
+    feedback = ClientFeedback.objects.create(
+        email=email,
+        service_area=deal.get('stage', ''),
+        job_id=deal_id,
+        user=connection.user,
+        crm_connection=connection,
+        metadata={
+            'deal_name': deal.get('name', 'Unknown Deal'),
+            'amount': deal.get('amount', ''),
+            'close_date': deal.get('close_date', ''),
+            'contact_name': contact_name,
+            'description': deal.get('description', ''),
+            'stage': deal.get('stage', ''),
+            'client_subdomain': client_name  # 🔥 NEW
+        }
+    )
+    
+    # Generate feedback URLs
+    base_url = f"https://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
+    yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
+    no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+    
+    # Prepare context for email template
+    context = {
+        'yes_url': yes_url,
+        'no_url': no_url,
+        'job_id': deal_id,
+        'deal_name': deal.get('name', 'Unknown Deal'),
         'from_email': settings.DEFAULT_FROM_EMAIL,
         'to_email': email,
         'contact_name': contact_name,
