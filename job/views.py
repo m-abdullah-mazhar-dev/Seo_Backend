@@ -638,6 +638,18 @@ class OAuthInitAPIView(APIView):
             }
             return f"https://api.getjobber.com/api/oauth/authorize?{urlencode(params)}"
         
+        elif crm_type.provider == 'salesforce':
+            from urllib.parse import urlencode
+            # Salesforce OAuth 2.0 authorization URL
+            params = {
+                "client_id": settings.SALESFORCE_CLIENT_ID,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": "api refresh_token",
+                "state": state,
+            }
+            return f"https://login.salesforce.com/services/oauth2/authorize?{urlencode(params)}"
+        
         # Add other CRM providers here
         return None
 
@@ -773,24 +785,49 @@ class OAuthCallbackAPIView(APIView):
                 print(f"Zoho token exchange error: {str(e)}")
 
         elif crm_type.provider == 'jobber':
-                url = "https://api.getjobber.com/api/oauth/token"
-                data = {
-                    'grant_type': 'authorization_code',
-                    'client_id': settings.JOBBER_CLIENT_ID,
-                    'client_secret': settings.JOBBER_CLIENT_SECRET,
-                    'redirect_uri': redirect_uri,
-                    'code': code
-                }
-                headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            url = "https://api.getjobber.com/api/oauth/token"
+            data = {
+                'grant_type': 'authorization_code',
+                'client_id': settings.JOBBER_CLIENT_ID,
+                'client_secret': settings.JOBBER_CLIENT_SECRET,
+                'redirect_uri': redirect_uri,
+                'code': code
+            }
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            
+            try:
+                response = requests.post(url, data=data, headers=headers)
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.error(f"❌ Jobber token exchange failed: {response.text}")
+            except requests.RequestException as e:
+                logger.error(f"❌ Jobber token exchange error: {str(e)}")
+                
+        elif crm_type.provider == 'salesforce':
+            url = "https://login.salesforce.com/services/oauth2/token"
+            data = {
+                'grant_type': 'authorization_code',
+                'client_id': settings.SALESFORCE_CLIENT_ID,
+                'client_secret': settings.SALESFORCE_CLIENT_SECRET,
+                'redirect_uri': redirect_uri,
+                'code': code
+            }
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            
+            try:
+                response = requests.post(url, data=data, headers=headers)
+                print(f"Salesforce token exchange response: {response.status_code}")
+                print(f"Salesforce token exchange response text: {response.text}")
+                
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.error(f"❌ Salesforce token exchange failed: {response.text}")
+            except requests.RequestException as e:
+                logger.error(f"❌ Salesforce token exchange error: {str(e)}")
         else:
-                logger.error(f"❌ Unsupported CRM provider: {crm_type.provider}")
-                return None
-
-        response = requests.post(url, data=data, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logger.error(f"❌ Token exchange failed ({crm_type.provider}): {response.text}")
+            logger.error(f"❌ Unsupported CRM provider: {crm_type.provider}")
             return None
 
         
@@ -2858,3 +2895,95 @@ class JobberJobCloseAPIView(APIView):
             return Response(result, status=status.HTTP_200_OK)
         else:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================== Salesforce CRM Operations ====================
+
+class SalesforceOpportunityCreateAPIView(APIView):
+    """Create an opportunity in Salesforce CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'salesforce':
+            return Response(
+                {"error": "This endpoint is only for Salesforce CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.create_job(request.data)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_201_CREATED)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SalesforceOpportunityCloseAPIView(APIView):
+    """Close an opportunity in Salesforce CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id, opportunity_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'salesforce':
+            return Response(
+                {"error": "This endpoint is only for Salesforce CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        won = request.data.get('won', True)
+        crm_service = get_crm_service(connection)
+        result = crm_service.close_job(opportunity_id, won)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SalesforceContactCreateAPIView(APIView):
+    """Create a contact in Salesforce CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'salesforce':
+            return Response(
+                {"error": "This endpoint is only for Salesforce CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # For Salesforce, we'll create a contact using the REST API
+        # This would require additional methods in the SalesforceService class
+        return Response(
+            {"error": "Contact creation not yet implemented for Salesforce"}, 
+            status=status.HTTP_501_NOT_IMPLEMENTED
+        )
