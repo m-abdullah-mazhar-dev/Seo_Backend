@@ -686,11 +686,46 @@ class OAuthCallbackAPIView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
+        # Check for OAuth errors first
+        error = request.GET.get('error')
+        error_description = request.GET.get('error_description', '')
+        
+        if error:
+            logger.error(f"OAuth Error: {error} - {error_description}")
+            
+            # Handle specific Salesforce errors
+            if error == 'OAUTH_AUTHORIZATION_BLOCKED':
+                return Response({
+                    "error": "Salesforce OAuth Authorization Blocked",
+                    "error_description": error_description,
+                    "solution": "Cross-org OAuth flows are not supported. Please check your Salesforce Connected App configuration:",
+                    "steps": [
+                        "1. Go to Salesforce Setup > App Manager",
+                        "2. Find your Connected App and click 'Edit'",
+                        "3. In OAuth Settings, enable 'Enable OAuth Settings'",
+                        "4. Add 'Cross-org OAuth flows' to the Selected OAuth Scopes",
+                        "5. Save the changes and try again"
+                    ]
+                }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    "error": f"OAuth authorization failed: {error}",
+                    "error_description": error_description,
+                    "details": "Please check your Salesforce Connected App configuration and ensure cross-org OAuth flows are enabled."
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
         serializer = OAuthCallbackSerializer(data=request.GET)
         if serializer.is_valid():
-            code = serializer.validated_data['code']
+            code = serializer.validated_data.get('code')
             state = serializer.validated_data['state']
             location = request.GET.get('location', '')  
+            
+            # If code is missing, it means there was an OAuth error
+            if not code:
+                return Response({
+                    "error": "Authorization code missing",
+                    "details": "The OAuth callback did not receive an authorization code. This usually indicates an OAuth error occurred during the authorization process."
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             # Verify state parameter
             if state != request.session.get('oauth_state'):

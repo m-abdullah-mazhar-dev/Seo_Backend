@@ -52,7 +52,7 @@ class OAuthInitSerializer(serializers.Serializer):
     # redirect_uri = serializers.URLField()
 
 class OAuthCallbackSerializer(serializers.Serializer):
-    code = serializers.CharField()
+    code = serializers.CharField(required=False)
     state = serializers.CharField()
 
 class ClientFeedbackSerializer(serializers.ModelSerializer):
