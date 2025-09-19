@@ -424,7 +424,7 @@ class OAuthState(models.Model):
     state = models.CharField(max_length=100, unique=True)
     crm_type_id = models.IntegerField()
     redirect_uri = models.URLField()
-    code_verifier = models.CharField(max_length=200, blank=True, null=True)  # For PKCE
+    code_verifier = models.CharField(max_length=255, blank=True, null=True)  # For PKCE
     created_at = models.DateTimeField(auto_now_add=True)
     
     def is_expired(self):
