@@ -203,7 +203,7 @@ def process_closed_deal(deal, connection):
     # base_url = settings.FRONTEND_URL.rstrip('/')
     # yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     # no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
-    base_url = f"https://{client_name}.seo.galaxywholesales.com".rstrip('/')
+    base_url = f"http://{client_name}.seo.galaxywholesales.com".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
@@ -468,7 +468,7 @@ def process_hubspot_deal(deal, connection):
     # no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
 
         # 🔥 UPDATED: Generate feedback URLs with client-specific sub-domain
-    base_url = f"https://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
+    base_url = f"http://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
@@ -487,49 +487,105 @@ def process_hubspot_deal(deal, connection):
     # Send email directly using Django's email system
     return send_feedback_email(context)
 
-def process_jobber_connection(connection):
-    """Process a single Jobber connection for closed jobs"""
-    crm_service = get_crm_service(connection)
+# def process_jobber_connection(connection):
+#     """Process a single Jobber connection for closed jobs"""
+#     crm_service = get_crm_service(connection)
     
+#     # Check if connection is valid
+#     if not connection.is_connected:
+#         print(f"Skipping {connection.connection_name}: Connection not active")
+#         return {"success": False, "error": "CONNECTION_DISCONNECTED", "processed_count": 0}
+    
+#     # Get last check time
+#     last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
+    
+#     # Fetch closed jobs from Jobber
+#     result = crm_service.get_closed_jobs(last_check)
+    
+#     if not result['success']:
+#         error = result.get('error', 'Unknown error')
+        
+#         if 'expired' in error.lower() or 'invalid' in error.lower():
+#             # Mark connection as disconnected
+#             connection.is_connected = False
+#             connection.save()
+#             return {"success": False, "error": "TOKEN_EXPIRED", "processed_count": 0}
+#         else:
+#             return {"success": False, "error": error, "processed_count": 0}
+    
+#     closed_jobs = result['data']
+#     processed_count = 0
+    
+#     for job in closed_jobs:
+#         job_id = job.get('id')
+#         last_modified = job.get('updated_at')
+        
+#         if should_process_deal(job_id, last_modified, connection):
+#             success = process_jobber_job(job, connection)
+#             if success:
+#                 processed_count += 1
+    
+#     # Update last sync time if we processed any jobs
+#     if processed_count > 0:
+#         connection.last_sync = timezone.now()
+#         connection.save(update_fields=['last_sync'])
+    
+#     return {"success": True, "processed_count": processed_count, "total_count": len(closed_jobs)}
+
+def process_jobber_connection(connection):
+    """Process a single Jobber connection for closed jobs with duplicate prevention"""
+    crm_service = get_crm_service(connection)
+
     # Check if connection is valid
     if not connection.is_connected:
         print(f"Skipping {connection.connection_name}: Connection not active")
         return {"success": False, "error": "CONNECTION_DISCONNECTED", "processed_count": 0}
-    
+
     # Get last check time
     last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
-    
+
     # Fetch closed jobs from Jobber
     result = crm_service.get_closed_jobs(last_check)
-    
+
     if not result['success']:
         error = result.get('error', 'Unknown error')
-        
         if 'expired' in error.lower() or 'invalid' in error.lower():
-            # Mark connection as disconnected
             connection.is_connected = False
             connection.save()
             return {"success": False, "error": "TOKEN_EXPIRED", "processed_count": 0}
         else:
             return {"success": False, "error": error, "processed_count": 0}
-    
+
     closed_jobs = result['data']
     processed_count = 0
-    
+    newly_processed_jobs = []
+
     for job in closed_jobs:
         job_id = job.get('id')
         last_modified = job.get('updated_at')
-        
+
+        # Check if this job was already processed (avoid duplicates)
         if should_process_deal(job_id, last_modified, connection):
             success = process_jobber_job(job, connection)
             if success:
                 processed_count += 1
-    
-    # Update last sync time if we processed any jobs
+                newly_processed_jobs.append({
+                    'deal_id': job_id,
+                    'last_activity_time': last_modified,
+                    'processed_at': timezone.now().isoformat()
+                })
+
+    # Update last sync time and processed jobs
     if processed_count > 0:
         connection.last_sync = timezone.now()
-        connection.save(update_fields=['last_sync'])
-    
+        current_processed = connection.processed_deals or []
+        current_processed.extend(newly_processed_jobs)
+        # Keep only the last 1000 processed jobs
+        if len(current_processed) > 1000:
+            current_processed = current_processed[-1000:]
+        connection.processed_deals = current_processed
+        connection.save(update_fields=['last_sync', 'processed_deals'])
+
     return {"success": True, "processed_count": processed_count, "total_count": len(closed_jobs)}
 
 def process_jobber_job(job, connection):
@@ -572,7 +628,7 @@ def process_jobber_job(job, connection):
     )
     
     # Generate feedback URLs
-    base_url = f"https://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
+    base_url = f"http://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
 
