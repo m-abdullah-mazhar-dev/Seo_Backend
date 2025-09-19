@@ -586,7 +586,19 @@ class OAuthInitAPIView(APIView):
             )
             
             # Build the authorization URL
-            auth_url = self.build_authorization_url(crm_type, redirect_uri, state)
+            auth_result = self.build_authorization_url(crm_type, redirect_uri, state)
+            
+            # Handle Salesforce case where we get both URL and code_verifier
+            if isinstance(auth_result, dict):
+                auth_url = auth_result["url"]
+                code_verifier = auth_result["code_verifier"]
+                
+                # Update the OAuthState with code_verifier
+                oauth_state = OAuthState.objects.get(state=state, user=request.user)
+                oauth_state.code_verifier = code_verifier
+                oauth_state.save()
+            else:
+                auth_url = auth_result
             
             return Response({"authorization_url": auth_url})
         
@@ -650,14 +662,6 @@ class OAuthInitAPIView(APIView):
                 hashlib.sha256(code_verifier.encode('utf-8')).digest()
             ).decode('utf-8').rstrip('=')
             
-            # Store code_verifier in the OAuthState for later use
-            try:
-                oauth_state = OAuthState.objects.get(state=state)
-                oauth_state.code_verifier = code_verifier
-                oauth_state.save()
-            except OAuthState.DoesNotExist:
-                pass  # State might not exist yet, will be handled in the calling method
-            
             # Salesforce OAuth 2.0 authorization URL with PKCE
             params = {
                 "client_id": settings.SALESFORCE_CLIENT_ID,
@@ -668,7 +672,11 @@ class OAuthInitAPIView(APIView):
                 "code_challenge": code_challenge,
                 "code_challenge_method": "S256",
             }
-            return f"https://login.salesforce.com/services/oauth2/authorize?{urlencode(params)}"
+            # Return both URL and code_verifier for Salesforce
+            return {
+                "url": f"https://login.salesforce.com/services/oauth2/authorize?{urlencode(params)}",
+                "code_verifier": code_verifier
+            }
         
         # Add other CRM providers here
         return None
@@ -692,6 +700,7 @@ class OAuthCallbackAPIView(APIView):
                         # Use database values as backup
                         crm_type_id = oauth_state.crm_type_id
                         redirect_uri = oauth_state.redirect_uri
+                        code_verifier = oauth_state.code_verifier  # Get PKCE code_verifier
                         # Clean up the used state
                         oauth_state.delete()
                     else:
@@ -706,6 +715,15 @@ class OAuthCallbackAPIView(APIView):
             else:
                 crm_type_id = request.session.get('oauth_crm_type')
                 redirect_uri = request.session.get('oauth_redirect_uri')
+                
+                # For Salesforce, we still need to get code_verifier from database
+                code_verifier = None
+                try:
+                    oauth_state = OAuthState.objects.get(state=state, user=request.user)
+                    code_verifier = oauth_state.code_verifier
+                    oauth_state.delete()  # Clean up
+                except OAuthState.DoesNotExist:
+                    pass
 
                             # Clear session data
                 for key in ['oauth_state', 'oauth_crm_type', 'oauth_redirect_uri']:
@@ -719,14 +737,6 @@ class OAuthCallbackAPIView(APIView):
                 )
                 
             crm_type = get_object_or_404(CRMType, id=crm_type_id)
-            
-            # Get code_verifier from OAuthState for PKCE (Salesforce)
-            code_verifier = None
-            try:
-                oauth_state = OAuthState.objects.get(state=state)
-                code_verifier = oauth_state.code_verifier
-            except OAuthState.DoesNotExist:
-                pass
             
             # Exchange code for access token
             token_data = self.exchange_code_for_token(crm_type, code, redirect_uri, location, code_verifier)
@@ -839,13 +849,9 @@ class OAuthCallbackAPIView(APIView):
                 'client_id': settings.SALESFORCE_CLIENT_ID,
                 'client_secret': settings.SALESFORCE_CLIENT_SECRET,
                 'redirect_uri': redirect_uri,
-                'code': code
+                'code': code,
+                'code_verifier': code_verifier  # Add PKCE code_verifier
             }
-            
-            # Add PKCE code_verifier if provided
-            if code_verifier:
-                data['code_verifier'] = code_verifier
-            
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
             
             try:
