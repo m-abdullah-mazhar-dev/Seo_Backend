@@ -640,13 +640,33 @@ class OAuthInitAPIView(APIView):
         
         elif crm_type.provider == 'salesforce':
             from urllib.parse import urlencode
-            # Salesforce OAuth 2.0 authorization URL
+            import secrets
+            import base64
+            import hashlib
+            
+            # Generate PKCE parameters for Salesforce
+            code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
+            code_challenge = base64.urlsafe_b64encode(
+                hashlib.sha256(code_verifier.encode('utf-8')).digest()
+            ).decode('utf-8').rstrip('=')
+            
+            # Store code_verifier in the OAuthState for later use
+            try:
+                oauth_state = OAuthState.objects.get(state=state)
+                oauth_state.code_verifier = code_verifier
+                oauth_state.save()
+            except OAuthState.DoesNotExist:
+                pass  # State might not exist yet, will be handled in the calling method
+            
+            # Salesforce OAuth 2.0 authorization URL with PKCE
             params = {
                 "client_id": settings.SALESFORCE_CLIENT_ID,
                 "redirect_uri": redirect_uri,
                 "response_type": "code",
                 "scope": "api refresh_token",
                 "state": state,
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
             }
             return f"https://login.salesforce.com/services/oauth2/authorize?{urlencode(params)}"
         
@@ -700,8 +720,16 @@ class OAuthCallbackAPIView(APIView):
                 
             crm_type = get_object_or_404(CRMType, id=crm_type_id)
             
+            # Get code_verifier from OAuthState for PKCE (Salesforce)
+            code_verifier = None
+            try:
+                oauth_state = OAuthState.objects.get(state=state)
+                code_verifier = oauth_state.code_verifier
+            except OAuthState.DoesNotExist:
+                pass
+            
             # Exchange code for access token
-            token_data = self.exchange_code_for_token(crm_type, code, redirect_uri,location)
+            token_data = self.exchange_code_for_token(crm_type, code, redirect_uri, location, code_verifier)
             
             if token_data:
                 # Create or update CRM connection
@@ -740,7 +768,7 @@ class OAuthCallbackAPIView(APIView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    def exchange_code_for_token(self, crm_type, code, redirect_uri,location=''):
+    def exchange_code_for_token(self, crm_type, code, redirect_uri, location='', code_verifier=None):
         if crm_type.provider == 'hubspot':
             url = "https://api.hubapi.com/oauth/v1/token"
             
@@ -813,6 +841,11 @@ class OAuthCallbackAPIView(APIView):
                 'redirect_uri': redirect_uri,
                 'code': code
             }
+            
+            # Add PKCE code_verifier if provided
+            if code_verifier:
+                data['code_verifier'] = code_verifier
+            
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
             
             try:
