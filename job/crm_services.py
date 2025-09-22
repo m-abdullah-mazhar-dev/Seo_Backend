@@ -1168,6 +1168,8 @@ def get_crm_service(connection):
         return ZohoCRMService(connection)
     elif connection.crm_type.provider == 'jobber':
         return JobberService(connection)
+    elif connection.crm_type.provider == 'zendesk':
+        return ZendeskService(connection)
     else:
         raise ValueError(f"Unsupported CRM provider: {connection.crm_type.provider}")
     
@@ -1708,3 +1710,82 @@ class ZohoCRMService(CRMServiceBase):
             print(f"Error fetching contact email: {str(e)}")
         
         return ''
+    
+
+
+
+class ZendeskService(CRMServiceBase):
+    """Zendesk CRM service implementation"""
+
+    def __init__(self, connection):
+        super().__init__(connection)
+        self.api_base = "https://botmerio.zendesk.com/api/v2"
+    
+    def get_api_base_url(self):
+        return self.api_base
+    
+    def verify_connection(self):
+        """Verify Zendesk connection using OAuth token"""
+        url = f"{self.api_base}/users/me.json"  # API endpoint to verify connection
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return True
+            return False
+        except requests.RequestException:
+            return False
+    
+    def create_ticket(self, ticket_data):
+        """Create a ticket in Zendesk"""
+        url = f"{self.api_base}/tickets.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "ticket": {
+                "subject": ticket_data['subject'],
+                "description": ticket_data['description'],
+                "priority": ticket_data.get('priority', 'normal')
+            }
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            if response.status_code == 201:
+                result = response.json()
+                return {"success": True, "ticket_id": result['ticket']['id'], "data": result}
+            return {"success": False, "error": response.text}
+        except requests.RequestException as e:
+            return {"success": False, "error": str(e)}
+    
+    def close_ticket(self, ticket_id):
+        """Close a ticket in Zendesk"""
+        url = f"{self.api_base}/tickets/{ticket_id}.json"
+        
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "ticket": {
+                "status": "closed"
+            }
+        }
+        
+        try:
+            response = requests.put(url, headers=headers, json=data)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            return {"success": False, "error": response.text}
+        except requests.RequestException as e:
+            return {"success": False, "error": str(e)}

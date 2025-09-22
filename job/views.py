@@ -638,6 +638,19 @@ class OAuthInitAPIView(APIView):
             }
             return f"https://api.getjobber.com/api/oauth/authorize?{urlencode(params)}"
         
+        elif crm_type.provider == "zendesk":
+            subdomain = settings.ZENDESK_SUBDOMAIN  # Your Zendesk subdomain
+            params = {
+                'client_id': settings.ZENDESK_CLIENT_ID,
+                'redirect_uri': redirect_uri,
+                'response_type': 'code',  # Add this
+                'scope': 'read write',
+                'state': state,
+            }
+            from urllib.parse import urlencode
+            # Use your subdomain for the authorization URL
+            return f"https://{subdomain}.zendesk.com/oauth/authorizations/new?{urlencode(params)}"
+        
         # Add other CRM providers here
         return None
 
@@ -782,6 +795,34 @@ class OAuthCallbackAPIView(APIView):
                     'code': code
                 }
                 headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        elif crm_type.provider == "zendesk":
+            subdomain = settings.ZENDESK_SUBDOMAIN  # Get from settings
+            url = f'https://{subdomain}.zendesk.com/oauth/tokens'
+            data = {
+                'grant_type': 'authorization_code',
+                'client_id': settings.ZENDESK_CLIENT_ID,
+                'client_secret': settings.ZENDESK_CLIENT_SECRET,
+                'code': code,
+                'redirect_uri': redirect_uri
+            }
+            
+            try:
+                print(f"🔄 Attempting Zendesk token exchange at: {url}")
+                print(f"📝 Data: {data}")
+                
+                response = requests.post(url, data=data)
+                print(f"📊 Response status: {response.status_code}")
+                print(f"📄 Response text: {response.text}")
+                
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.error(f"❌ Zendesk token exchange failed: {response.text}")
+                    return None
+                    
+            except requests.RequestException as e:
+                logger.error(f"❌ Zendesk token exchange error: {str(e)}")
+                return None
         else:
                 logger.error(f"❌ Unsupported CRM provider: {crm_type.provider}")
                 return None
