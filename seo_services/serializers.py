@@ -35,7 +35,7 @@ class ServiceAreaSerializer(serializers.ModelSerializer):
 class BusinessLocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessLocation
-        fields = ['id', 'location_name', 'location_url']
+        fields = ['id', 'location_name', 'location_url','center', 'area_list', 'business_service_areas']
 
 
 class OnBoardingFormSerializer(serializers.ModelSerializer):
@@ -92,6 +92,12 @@ class OnBoardingFormSerializer(serializers.ModelSerializer):
         services_data = validated_data.pop('services')
         service_areas_data = validated_data.pop('service_areas')
         business_locations_data = validated_data.pop('locations')
+
+            # Handle center, area_list, business_service_areas for each location
+        for location_data in business_locations_data:
+            location_data['center'] = location_data.get('center', {"lat": 0.0, "lng": 0.0})  # Default value if not provided
+            location_data['area_list'] = location_data.get('area_list', [])
+            location_data['business_service_areas'] = location_data.get('business_service_areas', [])
 
         user = self.context['request'].user
         print(user, "---------------")
@@ -201,13 +207,18 @@ class OnBoardingFormSerializer(serializers.ModelSerializer):
         
         for location_data in locations_data:
             location_id = location_data.get('id')
+
+            # location_data['center'] = location_data.get('center', {"lat": 0.0, "lng": 0.0})  # Default if not provided
+            # location_data['area_list'] = location_data.get('area_list', [])
+            # location_data['business_service_areas'] = location_data.get('business_service_areas', [])
             
             if location_id and location_id in existing_locations:
                 # Update existing location
                 location = existing_locations[location_id]
                 for key, value in location_data.items():
-                    setattr(location, key, value)
-                location.save()
+                    # if value: 
+                    #     setattr(location, key, value)
+                    location.save()
                 kept_location_ids.append(location_id)
             else:
                 # Create new location

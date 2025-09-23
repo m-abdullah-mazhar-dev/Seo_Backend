@@ -10,7 +10,7 @@ from.serializers import *
 from rest_framework.response import Response
 from rest_framework import status
 import base64 , requests
-from datetime import timedelta
+from datetime import time, timedelta
 from django.utils import timezone
 from SEO_Automation import settings
 from requests.exceptions import RequestException
@@ -169,6 +169,110 @@ class OnBoardingFormAPIView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+from geopy.distance import geodesic
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+import requests
+from geopy.exc import GeocoderTimedOut
+from geopy import OpenCage
+
+class NearbyAreasAPIView(APIView):
+    def post(self, request):
+        # Extract area_name and radius from the request data
+        area_name = request.data.get("area_name")
+        radius = request.data.get("radius", 10)  # Default to 10 miles if not provided
+
+        if not area_name:
+            return Response({"message": "Area name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Step 1: Get coordinates of the area_name using Geopy
+        center_lat, center_lng = self.get_coordinates(area_name)
+        if center_lat is None or center_lng is None:
+            return Response({"message": "Area not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Step 2: Get nearby locations using Overpass API
+        nearby_areas = self.get_nearby_areas(center_lat, center_lng, radius)
+
+        # Step 3: Limit the result to 20 areas and filter by distance (within the radius)
+        nearby_areas = self.filter_areas_within_radius(nearby_areas, center_lat, center_lng, radius)
+
+        # Step 4: Return the result in the required format
+        result = {
+            "center": {"lat": center_lat, "lng": center_lng},
+            "areas": nearby_areas[:20]  # Limit to 20 areas
+        }
+        return Response(result, status=status.HTTP_200_OK)
+
+    def get_coordinates(self, area_name):
+        key = "dc5c08222b53419da5ff59e9fbdeb91d"
+        geolocator = OpenCage(api_key=key)
+
+        try:
+            location = geolocator.geocode(area_name)
+            if location:
+                return location.latitude, location.longitude
+            else:
+                return None, None
+        except GeocoderTimedOut:
+            return None, None
+
+    def get_nearby_areas(self, center_lat, center_lng, radius):
+        """Fetch nearby areas using Overpass API and filter them by radius."""
+        # Construct the Overpass query to search for areas around the center
+        overpass_url = "http://overpass-api.de/api/interpreter"
+        
+        # Query to get only specific elements within the radius
+        overpass_query = f"""
+        [out:json];
+        (
+            node["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
+            node["place"](around:{radius * 1609.34},{center_lat},{center_lng});
+            node["building"](around:{radius * 1609.34},{center_lat},{center_lng});
+            node["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
+            node["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
+            way["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
+            way["place"](around:{radius * 1609.34},{center_lat},{center_lng});
+            way["building"](around:{radius * 1609.34},{center_lat},{center_lng});
+            way["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
+            way["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
+            relation["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
+            relation["place"](around:{radius * 1609.34},{center_lat},{center_lng});
+            relation["building"](around:{radius * 1609.34},{center_lat},{center_lng});
+            relation["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
+            relation["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
+            );
+        out body;
+        """
+        response = requests.get(overpass_url, params={'data': overpass_query})
+        data = response.json()
+
+        # List of nearby areas
+        nearby_areas = []
+
+        for element in data['elements']:
+            if 'tags' in element and 'name' in element['tags']:
+                # Extract name, lat, and lng for each element
+                name = element['tags']['name']
+                lat = element['lat'] if 'lat' in element else None
+                lng = element['lon'] if 'lon' in element else None
+
+                # Ensure valid lat and lng values
+                if lat and lng:
+                    nearby_areas.append({"name": name, "lat": lat, "lng": lng})
+
+        return nearby_areas
+
+    def filter_areas_within_radius(self, areas, center_lat, center_lng, radius):
+        """Filter the areas that are within the radius."""
+        filtered_areas = []
+        for area in areas:
+            lat, lng = area['lat'], area['lng']
+            # Calculate the distance from the center to each area
+            distance = geodesic((center_lat, center_lng), (lat, lng)).miles
+            if distance <= radius:
+                filtered_areas.append(area)
+        return filtered_areas
 
 
 
