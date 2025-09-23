@@ -74,6 +74,12 @@ class BusinessLocation(models.Model):
     location_name = models.CharField(max_length=1000)
     location_url = models.URLField(max_length=1000)
 
+    center = models.JSONField(default=dict, null=True,blank=True)
+    
+    # Adding area_list and business_service_areas as JSON fields to store list of areas
+    area_list = models.JSONField(default=list,null=True,blank=True)
+    business_service_areas = models.JSONField(default=list,null=True, blank=True)
+
 
 class WordPressConnection(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wordpress_connection')
