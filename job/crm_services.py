@@ -1168,6 +1168,8 @@ def get_crm_service(connection):
         return ZohoCRMService(connection)
     elif connection.crm_type.provider == 'jobber':
         return JobberService(connection)
+    elif connection.crm_type.provider == 'zendesk':
+        return ZendeskService(connection)
     else:
         raise ValueError(f"Unsupported CRM provider: {connection.crm_type.provider}")
     
@@ -1708,3 +1710,198 @@ class ZohoCRMService(CRMServiceBase):
             print(f"Error fetching contact email: {str(e)}")
         
         return ''
+    
+# crm/services.py
+class ZendeskService(CRMServiceBase):
+    """Zendesk CRM service implementation"""
+
+    def __init__(self, connection):
+        super().__init__(connection)
+        self.api_base = "https://botmeriosupport.zendesk.com/api/v2"
+
+    def get_api_base_url(self):
+        return self.api_base
+
+    def verify_connection(self):
+        """Verify Zendesk connection using OAuth token"""
+        if not self.ensure_valid_token():
+            return False
+        
+        url = f"{self.api_base}/tickets.json"
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params={"per_page": 1})
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+
+    def ensure_valid_token(self):
+        """Ensure Zendesk access token is valid, refresh if expired."""
+        if hasattr(self.connection, 'oauth_token_expiry'):
+            if self.connection.oauth_token_expiry and self.connection.oauth_token_expiry < timezone.now():
+                success = self.refresh_token()
+                if not success:
+                    self.connection.is_connected = False
+                    self.connection.save()
+                    return False
+        return True
+
+    def refresh_token(self):
+        """Refresh Zendesk access token using refresh token."""
+        if not self.connection.oauth_refresh_token:
+            return False
+
+        token_url = "https://botmeriosupport.zendesk.com/oauth/tokens"
+        data = {
+            'grant_type': 'refresh_token',
+            'client_id': settings.ZENDESK_CLIENT_ID,
+            'client_secret': settings.ZENDESK_CLIENT_SECRET,
+            'refresh_token': self.connection.oauth_refresh_token
+        }
+        
+        try:
+            response = requests.post(token_url, data=data)
+            if response.status_code == 200:
+                token_data = response.json()
+                self.connection.oauth_access_token = token_data['access_token']
+                self.connection.oauth_refresh_token = token_data.get('refresh_token', self.connection.oauth_refresh_token)
+                self.connection.oauth_token_expiry = timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+                self.connection.save()
+                return True
+        except requests.RequestException:
+            pass
+        return False
+
+    def get_solved_tickets(self, last_check_time=None, limit=100):
+        """Fetch solved tickets from Zendesk with proper error handling and email enrichment"""
+        if not self.ensure_valid_token():
+            return {"success": False, "error": "TOKEN_EXPIRED"}
+
+        headers = {
+            "Authorization": f"Bearer {self.connection.oauth_access_token}",
+            "Content-Type": "application/json"
+        }
+
+        # Build search query for solved tickets
+        query_parts = ["status:solved", "type:ticket"]
+
+        # If last_check_time exists, append it as updated filter
+        if last_check_time:
+            last_check_str = last_check_time.strftime("%Y-%m-%d")
+            query_parts.append(f"updated>={last_check_str}")
+
+        search_query = " ".join(query_parts)
+        print(f"Searching for tickets with query: {search_query}")
+        
+        url = f"{self.api_base}/search.json"
+        params = {
+            "query": search_query,
+            "sort_by": "updated_at",
+            "sort_order": "asc",
+            "per_page": limit
+        }
+
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+
+            if response.status_code == 200:
+                data = response.json()
+                tickets = data.get('results', [])
+                print(f"Found {len(tickets)} solved tickets in Zendesk")
+                
+                # Enrich tickets with requester details
+                enriched_tickets = []
+                for ticket in tickets:
+                    enriched_ticket = self.enrich_ticket_with_requester(ticket, headers)
+                    if enriched_ticket:
+                        enriched_tickets.append(enriched_ticket)
+
+                # Pagination Handling (if necessary)
+                while 'next_page' in data and data['next_page']:
+                    params['page'] = data['next_page']
+                    response = requests.get(url, headers=headers, params=params, timeout=30)
+                    data = response.json()
+                    tickets = data.get('results', [])
+                    for ticket in tickets:
+                        enriched_ticket = self.enrich_ticket_with_requester(ticket, headers)
+                        if enriched_ticket:
+                            enriched_tickets.append(enriched_ticket)
+
+                return {"success": True, "data": enriched_tickets}
+
+            elif response.status_code == 401:
+                # Token expired, try to refresh
+                print("Zendesk token expired. Attempting refresh...")
+                if self.refresh_token():
+                    return self.get_solved_tickets(last_check_time, limit)
+                else:
+                    self.connection.is_connected = False
+                    self.connection.save()
+                    return {"success": False, "error": "TOKEN_EXPIRED"}
+
+            else:
+                error_msg = f"Zendesk Error {response.status_code}: {response.text}"
+                print(f"Zendesk API error: {error_msg}")
+                return {"success": False, "error": error_msg}
+
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Request failed: {str(e)}"}
+
+
+
+    def enrich_ticket_with_requester(self, ticket, headers):
+        """Enrich ticket with requester email and details"""
+        requester_id = ticket.get('requester_id')
+        if not requester_id:
+            return None
+
+        # Get requester details
+        user_url = f"{self.api_base}/users/{requester_id}.json"
+        
+        try:
+            response = requests.get(user_url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                user_data = response.json().get('user', {})
+                
+                # Add requester info to ticket
+                ticket['requester'] = {
+                    'id': requester_id,
+                    'email': user_data.get('email'),
+                    'name': user_data.get('name'),
+                    'phone': user_data.get('phone'),
+                    'organization': user_data.get('organization_id')
+                }
+                
+                return ticket
+                
+        except requests.RequestException:
+            pass
+        
+        return ticket
+
+    def extract_email_from_ticket(self, ticket):
+        """Extract email from Zendesk ticket data"""
+        requester = ticket.get('requester', {})
+        email = requester.get('email')
+        
+        if email and self.is_valid_email(email):
+            return email
+        
+        return ""
+
+    def is_valid_email(self, email):
+        """Check if email is valid (same as HubSpot)"""
+        if not email or "@" not in email:
+            return False
+        
+        # Filter out common placeholder emails
+        invalid_domains = ['noemail.invalid', 'example.com', 'test.com', 'placeholder.com']
+        for domain in invalid_domains:
+            if domain in email:
+                return False
+        
+        return True
