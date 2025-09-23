@@ -61,6 +61,15 @@ app.conf.beat_schedule = {
             'expires': 10800,  # 3 hours
         }
     },
+    'check-zendesk-solved-tickets': {
+        'task': 'job.tasks.check_zendesk_solved_tickets',
+        'schedule': crontab(),  # Runs every minute
+        # 'schedule': crontab(minute=15, hour='*/4'),  # Example: every 4 hours at :15
+        # 'options': {
+        #     'expires': 14400,  # 4 hours
+        # }
+    },
+    
 }
 
 

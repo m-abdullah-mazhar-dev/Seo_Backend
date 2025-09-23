@@ -676,3 +676,158 @@ def send_feedback_email(context):
     except Exception as e:
         print(f"Failed to send email: {str(e)}")
         return False
+# tasks.py
+@shared_task(bind=True, max_retries=3)
+def check_zendesk_solved_tickets(self):
+    """Celery task to check Zendesk for solved tickets and send feedback emails"""
+    logger.info(f"🔄 Zendesk solved tickets check started.")
+
+    zendesk_connections = CRMConnection.objects.filter(
+        crm_type__provider='zendesk',
+        is_connected=True
+    )
+
+    results = []
+
+    for connection in zendesk_connections:
+        if should_skip_due_to_rate_limit(connection):
+            print(f"Skipping {connection.connection_name} due to recent rate limit")
+            continue
+            
+        result = process_zendesk_connection(connection)
+        results.append({
+            'connection_id': connection.id,
+            'connection_name': connection.connection_name,
+            'result': result
+        })
+
+        if result.get('error') == 'TOKEN_EXPIRED':
+            # Mark connection as disconnected and retry
+            connection.is_connected = False
+            connection.save()
+            self.retry(countdown=3600, max_retries=3)
+        elif result.get('error') == 'RATE_LIMIT_EXCEEDED':
+            handle_rate_limit(connection)
+            self.retry(countdown=3600, max_retries=3)
+
+    return results
+
+def process_zendesk_connection(connection):
+    """Process a single Zendesk connection for solved tickets with duplicate prevention (like HubSpot/Zoho)"""
+    crm_service = get_crm_service(connection)
+
+    # Check if connection is valid
+    if not connection.is_connected:
+        print(f"Skipping {connection.connection_name}: Connection not active")
+        return {"success": False, "error": "CONNECTION_DISCONNECTED", "processed_count": 0}
+
+    # Get last check time
+    last_check = connection.last_sync or timezone.now() - timezone.timedelta(hours=24)
+
+    # Fetch solved tickets
+    result = crm_service.get_solved_tickets(last_check)
+
+    if not result['success']:
+        error = result.get('error', 'Unknown error')
+        if error == 'TOKEN_EXPIRED':
+            connection.is_connected = False
+            connection.save()
+            return {"success": False, "error": "TOKEN_EXPIRED", "processed_count": 0}
+        else:
+            return {"success": False, "error": error, "processed_count": 0}
+
+    solved_tickets = result['data']
+    processed_count = 0
+    newly_processed_tickets = []
+
+    for ticket in solved_tickets:
+        ticket_id = str(ticket.get('id'))
+        last_modified = ticket.get('updated_at')
+
+        # Prevent duplicate emails (same logic as HubSpot/Zoho)
+        if should_process_deal(ticket_id, last_modified, connection):
+            success = process_zendesk_ticket(ticket, connection)
+            if success:
+                processed_count += 1
+                newly_processed_tickets.append({
+                    'deal_id': ticket_id,
+                    'last_activity_time': last_modified,
+                    'processed_at': timezone.now().isoformat()
+                })
+
+    # Update last sync time and processed tickets
+    if processed_count > 0:
+        connection.last_sync = timezone.now()
+        current_processed = connection.processed_deals or []
+        current_processed.extend(newly_processed_tickets)
+        # Keep only the last 1000 processed tickets
+        if len(current_processed) > 1000:
+            current_processed = current_processed[-1000:]
+        connection.processed_deals = current_processed
+        connection.save(update_fields=['last_sync', 'processed_deals'])
+
+    return {"success": True, "processed_count": processed_count, "total_count": len(solved_tickets)}
+
+def process_zendesk_ticket(ticket, connection):
+    """Process a single Zendesk solved ticket and send feedback email"""
+    ticket_id = str(ticket.get('id'))
+    
+    # Extract email using Zendesk service
+    crm_service = get_crm_service(connection)
+    email = crm_service.extract_email_from_ticket(ticket)
+    
+    if not email or not crm_service.is_valid_email(email):
+        print(f"Skipping ticket {ticket_id}: No valid email found")
+        return False
+    
+    # Generate client subdomain from email (same as HubSpot logic)
+    client_name = email.split('@')[0]
+    client_name = client_name.lower()
+    client_name = re.sub(r'[^a-z0-9]', '', client_name)
+    
+    if not client_name:
+        client_name = f"client{random.randint(1000, 9999)}"
+    
+    # Get contact name
+    contact_name = ticket.get('requester', {}).get('name', '')
+    
+    # Create feedback record
+    feedback = ClientFeedback.objects.create(
+        email=email,
+        service_area=ticket.get('subject', 'Zendesk Support'),
+        job_id=ticket_id,
+        user=connection.user,
+        crm_connection=connection,
+        metadata={
+            'ticket_subject': ticket.get('subject', ''),
+            'description': ticket.get('description', ''),
+            'status': ticket.get('status', ''),
+            'priority': ticket.get('priority', ''),
+            'type': ticket.get('type', ''),
+            'contact_name': contact_name,
+            'client_subdomain': client_name,
+            'requester_id': ticket.get('requester_id'),
+            'created_at': ticket.get('created_at'),
+            'updated_at': ticket.get('updated_at')
+        }
+    )
+    
+    # Generate feedback URLs with client-specific sub-domain
+    base_url = f"http://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
+    yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
+    no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+    
+    # Prepare context for email template
+    context = {
+        'yes_url': yes_url,
+        'no_url': no_url,
+        'job_id': ticket_id,
+        'deal_name': ticket.get('subject', 'Zendesk Support Ticket'),
+        'from_email': settings.DEFAULT_FROM_EMAIL,
+        'to_email': email,
+        'contact_name': contact_name,
+        'current_date': timezone.now(),
+    }
+    
+    # Send email directly using Django's email system
+    return send_feedback_email(context)

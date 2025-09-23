@@ -79,32 +79,77 @@
 #         print(d)
 
 import requests
+import requests
 
-def get_access_token(client_id, client_secret, authorization_code, redirect_uri):
-    subdomain = "botmeriosupport"
-    # Replace these with your own values
-    token_url = "https://botmeriosupport.zendesk.com/oauth/tokens"  # Replace {subdomain}
+def fetch_solved_deals(oauth_token, limit=50):
+    tickets_url = "https://botmeriosupport.zendesk.com/api/v2/tickets.json"
+    users_url = "https://botmeriosupport.zendesk.com/api/v2/users/{}"  # for requester email
     
-    data = {
-        'grant_type': 'authorization_code',
-        'client_id': client_id,
-        'client_secret': client_secret,
-        'code': authorization_code,
-        'redirect_uri': redirect_uri,
+    headers = {
+        "Authorization": f"Bearer {oauth_token}",
+        "Content-Type": "application/json"
     }
 
-    response = requests.post(token_url, data=data)
+    params = {
+        "status": "solved",  # filter for solved tickets
+        "per_page": limit
+    }
 
-    if response.status_code == 200:
-        token_data = response.json()
-        print("Access Token:", token_data['access_token'])
-    else:
-        print(f"Failed to exchange code for token: {response.status_code}, {response.text}")
+    try:
+        response = requests.get(tickets_url, headers=headers, params=params, timeout=5)
+        
+        if response.status_code == 200:
+            tickets = response.json().get('tickets', [])
+            if not tickets:
+                print("No solved tickets found.")
+                return []
 
-# Example usage
-get_access_token(
-    client_id="crm_integration",
-    client_secret='0d099f77eeb7bf1eaa59b0cb29a37b9b7d586d90489fd9acadb362ef3db9811d',
-    authorization_code='authorization_code_received',
-    redirect_uri='https://a92d63f41921.ngrok-free.app/job/crm/oauth/callback/'
-)
+            print(f"Found {len(tickets)} tickets in total.")
+
+            solved_tickets_details = []
+            for ticket in tickets:
+                if ticket['status'] != 'solved':
+                    continue
+
+                # Fetch requester info
+                requester_id = ticket.get('requester_id')
+                requester_email = None
+                if requester_id:
+                    user_resp = requests.get(users_url.format(requester_id), headers=headers, timeout=5)
+                    if user_resp.status_code == 200:
+                        requester_email = user_resp.json()['user'].get('email')
+
+                ticket_info = {
+                    "id": ticket['id'],
+                    "subject": ticket.get('subject'),
+                    "status": ticket.get('status'),
+                    "description": ticket.get('description'),
+                    "requester_id": requester_id,
+                    "requester_email": requester_email,
+                    "created_at": ticket.get('created_at'),
+                    "updated_at": ticket.get('updated_at'),
+                    "priority": ticket.get('priority'),
+                    "type": ticket.get('type'),
+                }
+
+                solved_tickets_details.append(ticket_info)
+
+                # Print summary
+                print(f"\nSolved Ticket ID: {ticket_info['id']}")
+                print(f"Subject: {ticket_info['subject']}")
+                print(f"Requester Email: {ticket_info['requester_email']}")
+                print(f"Description: {ticket_info['description']}")
+                print(f"Created At: {ticket_info['created_at']}, Updated At: {ticket_info['updated_at']}")
+
+            return solved_tickets_details
+        else:
+            print(f"Failed to fetch tickets: {response.status_code} - {response.text}")
+            return []
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        return []
+
+# Example Usage
+
+
+fetch_solved_deals(oauth_token="6f88ef87e9b86b4a164b083f0b0330f6518697a9edee0e6b5fbb2d9a1eb2070e")
