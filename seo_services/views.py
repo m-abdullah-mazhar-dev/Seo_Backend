@@ -168,14 +168,13 @@ class OnBoardingFormAPIView(APIView):
             {"errors": serializer.errors, "message": "Invalid data provided."},
             status=status.HTTP_400_BAD_REQUEST
         )
-
-from geopy.distance import geodesic
+from concurrent.futures import ThreadPoolExecutor
+from geopy.exc import GeocoderTimedOut
+from geopy import OpenCage
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-import requests
-from geopy.exc import GeocoderTimedOut
-from geopy import OpenCage
+from geopy.distance import geodesic
 
 class NearbyAreasAPIView(APIView):
     def post(self, request):
@@ -186,7 +185,7 @@ class NearbyAreasAPIView(APIView):
         if not area_name:
             return Response({"message": "Area name is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Step 1: Get coordinates of the area_name using Geopy
+        # Step 1: Get coordinates of the area_name using Geopy (using threads for parallel geocoding)
         center_lat, center_lng = self.get_coordinates(area_name)
         if center_lat is None or center_lng is None:
             return Response({"message": "Area not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -194,7 +193,7 @@ class NearbyAreasAPIView(APIView):
         # Step 2: Get nearby locations using Overpass API
         nearby_areas = self.get_nearby_areas(center_lat, center_lng, radius)
 
-        # Step 3: Limit the result to 20 areas and filter by distance (within the radius)
+        # Step 3: Filter areas within the radius
         nearby_areas = self.filter_areas_within_radius(nearby_areas, center_lat, center_lng, radius)
 
         # Step 4: Return the result in the required format
@@ -205,24 +204,26 @@ class NearbyAreasAPIView(APIView):
         return Response(result, status=status.HTTP_200_OK)
 
     def get_coordinates(self, area_name):
+        """Fetch the coordinates for a given area name using OpenCage API, with retry on timeout."""
         key = "dc5c08222b53419da5ff59e9fbdeb91d"
         geolocator = OpenCage(api_key=key)
 
         try:
-            location = geolocator.geocode(area_name)
+            location = geolocator.geocode(area_name, timeout=10)  # Increased timeout
             if location:
                 return location.latitude, location.longitude
             else:
                 return None, None
         except GeocoderTimedOut:
             return None, None
+        except Exception as e:
+            print(f"Error occurred: {e}")
+            return None, None
 
     def get_nearby_areas(self, center_lat, center_lng, radius):
         """Fetch nearby areas using Overpass API and filter them by radius."""
-        # Construct the Overpass query to search for areas around the center
         overpass_url = "http://overpass-api.de/api/interpreter"
         
-        # Query to get only specific elements within the radius
         overpass_query = f"""
         [out:json];
         (
@@ -241,38 +242,37 @@ class NearbyAreasAPIView(APIView):
             relation["building"](around:{radius * 1609.34},{center_lat},{center_lng});
             relation["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
             relation["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
-            );
-        out body;
+        );
+        out body 20;
         """
         response = requests.get(overpass_url, params={'data': overpass_query})
         data = response.json()
 
         # List of nearby areas
         nearby_areas = []
-
         for element in data['elements']:
             if 'tags' in element and 'name' in element['tags']:
-                # Extract name, lat, and lng for each element
                 name = element['tags']['name']
                 lat = element['lat'] if 'lat' in element else None
                 lng = element['lon'] if 'lon' in element else None
 
-                # Ensure valid lat and lng values
                 if lat and lng:
                     nearby_areas.append({"name": name, "lat": lat, "lng": lng})
 
         return nearby_areas
 
     def filter_areas_within_radius(self, areas, center_lat, center_lng, radius):
-        """Filter the areas that are within the radius."""
-        filtered_areas = []
-        for area in areas:
-            lat, lng = area['lat'], area['lng']
-            # Calculate the distance from the center to each area
-            distance = geodesic((center_lat, center_lng), (lat, lng)).miles
-            if distance <= radius:
-                filtered_areas.append(area)
-        return filtered_areas
+        """Filter the areas that are within the radius using multiple threads."""
+        with ThreadPoolExecutor() as executor:
+            results = list(executor.map(lambda area: self.calculate_distance(area, center_lat, center_lng, radius), areas))
+
+        # Filter out areas that are beyond the radius
+        return [area for area, is_within in zip(areas, results) if is_within]
+
+    def calculate_distance(self, area, center_lat, center_lng, radius):
+        """Calculate the distance and check if the area is within the radius."""
+        distance = geodesic((center_lat, center_lng), (area['lat'], area['lng'])).miles
+        return distance <= radius
 
 
 
