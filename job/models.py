@@ -417,6 +417,8 @@ class ClientFeedback(models.Model):
     crm_connection = models.ForeignKey(CRMConnection, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(default=dict, blank=True) 
 
+    feedback_submitted = models.BooleanField(default=False)
+
 
 
 # models.py
