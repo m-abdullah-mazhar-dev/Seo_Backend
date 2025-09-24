@@ -176,6 +176,113 @@ from rest_framework.response import Response
 from rest_framework import status
 from geopy.distance import geodesic
 
+# class NearbyAreasAPIView(APIView):
+#     def post(self, request):
+#         # Extract area_name and radius from the request data
+#         area_name = request.data.get("area_name")
+#         radius = request.data.get("radius", 10)  # Default to 10 miles if not provided
+
+#         if not area_name:
+#             return Response({"message": "Area name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Step 1: Get coordinates of the area_name using Geopy (using threads for parallel geocoding)
+#         center_lat, center_lng = self.get_coordinates(area_name)
+#         if center_lat is None or center_lng is None:
+#             return Response({"message": "Area not found"}, status=status.HTTP_404_NOT_FOUND)
+
+#         # Step 2: Get nearby locations using Overpass API
+#         nearby_areas = self.get_nearby_areas(center_lat, center_lng, radius)
+
+#         # Step 3: Filter areas within the radius
+#         nearby_areas = self.filter_areas_within_radius(nearby_areas, center_lat, center_lng, radius)
+
+#         # Step 4: Return the result in the required format
+#         result = {
+#             "center": {"lat": center_lat, "lng": center_lng},
+#             "areas": nearby_areas[:20]  # Limit to 20 areas
+#         }
+#         return Response(result, status=status.HTTP_200_OK)
+
+#     def get_coordinates(self, area_name):
+#         """Fetch the coordinates for a given area name using OpenCage API, with retry on timeout."""
+#         key = "dc5c08222b53419da5ff59e9fbdeb91d"
+#         geolocator = OpenCage(api_key=key)
+
+#         try:
+#             location = geolocator.geocode(area_name, timeout=10)  # Increased timeout
+#             if location:
+#                 return location.latitude, location.longitude
+#             else:
+#                 return None, None
+#         except GeocoderTimedOut:
+#             return None, None
+#         except Exception as e:
+#             print(f"Error occurred: {e}")
+#             return None, None
+
+#     def get_nearby_areas(self, center_lat, center_lng, radius):
+#         """Fetch nearby areas using Overpass API and filter them by radius."""
+#         overpass_url = "http://overpass-api.de/api/interpreter"
+        
+#         overpass_query = f"""
+#         [out:json];
+#         (
+#             node["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             node["place"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             node["building"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             node["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             node["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             way["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             way["place"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             way["building"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             way["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             way["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             relation["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             relation["place"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             relation["building"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             relation["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
+#             relation["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
+#         );
+#         out body 20;
+#         """
+#         response = requests.get(overpass_url, params={'data': overpass_query})
+#         data = response.json()
+
+#         # List of nearby areas
+#         nearby_areas = []
+#         for element in data['elements']:
+#             if 'tags' in element and 'name' in element['tags']:
+#                 name = element['tags']['name']
+#                 lat = element['lat'] if 'lat' in element else None
+#                 lng = element['lon'] if 'lon' in element else None
+
+#                 if lat and lng:
+#                     nearby_areas.append({"name": name, "lat": lat, "lng": lng})
+
+#         return nearby_areas
+
+#     def filter_areas_within_radius(self, areas, center_lat, center_lng, radius):
+#         """Filter the areas that are within the radius using multiple threads."""
+#         with ThreadPoolExecutor() as executor:
+#             results = list(executor.map(lambda area: self.calculate_distance(area, center_lat, center_lng, radius), areas))
+
+#         # Filter out areas that are beyond the radius
+#         return [area for area, is_within in zip(areas, results) if is_within]
+
+#     def calculate_distance(self, area, center_lat, center_lng, radius):
+#         """Calculate the distance and check if the area is within the radius."""
+#         distance = geodesic((center_lat, center_lng), (area['lat'], area['lng'])).miles
+#         return distance <= radius
+
+# update
+
+import googlemaps
+from django.conf import settings
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from geopy.distance import geodesic
+
 class NearbyAreasAPIView(APIView):
     def post(self, request):
         # Extract area_name and radius from the request data
@@ -185,94 +292,232 @@ class NearbyAreasAPIView(APIView):
         if not area_name:
             return Response({"message": "Area name is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Step 1: Get coordinates of the area_name using Geopy (using threads for parallel geocoding)
+        # Step 1: Get coordinates of the area_name using Google Geocoding API
         center_lat, center_lng = self.get_coordinates(area_name)
         if center_lat is None or center_lng is None:
             return Response({"message": "Area not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Step 2: Get nearby locations using Overpass API
+        # Step 2: Get nearby areas using Google Places API
         nearby_areas = self.get_nearby_areas(center_lat, center_lng, radius)
 
-        # Step 3: Filter areas within the radius
-        nearby_areas = self.filter_areas_within_radius(nearby_areas, center_lat, center_lng, radius)
+        # Step 3: Filter areas within the exact radius and remove duplicates
+        filtered_areas = self.filter_areas_within_radius(nearby_areas, center_lat, center_lng, radius)
+        
+        # Remove duplicates by name and ensure minimum 20 results
+        unique_areas = self.remove_duplicates(filtered_areas)
+        
+        # If we have less than 20 results, try to get more using different methods
+        if len(unique_areas) < 20:
+            additional_areas = self.get_additional_areas(center_lat, center_lng, radius, unique_areas)
+            unique_areas.extend(additional_areas)
+            unique_areas = self.remove_duplicates(unique_areas)
 
         # Step 4: Return the result in the required format
         result = {
             "center": {"lat": center_lat, "lng": center_lng},
-            "areas": nearby_areas[:20]  # Limit to 20 areas
+            "areas": unique_areas[:20]  # Ensure exactly 20 areas
         }
         return Response(result, status=status.HTTP_200_OK)
 
     def get_coordinates(self, area_name):
-        """Fetch the coordinates for a given area name using OpenCage API, with retry on timeout."""
-        key = "dc5c08222b53419da5ff59e9fbdeb91d"
-        geolocator = OpenCage(api_key=key)
-
+        """Fetch the coordinates for a given area name using Google Geocoding API."""
         try:
-            location = geolocator.geocode(area_name, timeout=10)  # Increased timeout
-            if location:
-                return location.latitude, location.longitude
+            gmaps = googlemaps.Client(key="AIzaSyDNdts5OXZbt-RWwxeFcz4pi6E2EqPSl7s")
+            geocode_result = gmaps.geocode(area_name)
+            
+            if geocode_result:
+                location = geocode_result[0]['geometry']['location']
+                return location['lat'], location['lng']
             else:
                 return None, None
-        except GeocoderTimedOut:
-            return None, None
         except Exception as e:
-            print(f"Error occurred: {e}")
+            print(f"Error occurred in geocoding: {e}")
             return None, None
 
     def get_nearby_areas(self, center_lat, center_lng, radius):
-        """Fetch nearby areas using Overpass API and filter them by radius."""
-        overpass_url = "http://overpass-api.de/api/interpreter"
+        """Fetch nearby areas using Google Places API with specific area-focused searches."""
+        try:
+            gmaps = googlemaps.Client(key="AIzaSyDNdts5OXZbt-RWwxeFcz4pi6E2EqPSl7s")
+            
+            # Convert miles to meters (Google Places API uses meters)
+            radius_meters = radius * 1609.34
+            
+            nearby_areas = []
+            
+            # Search queries specifically for areas, towns, neighborhoods
+            area_queries = [
+                "town", "neighborhood", "colony", "sector", "block", 
+                "area", "locality", "village", "township", "settlement",
+                "community", "district", "quarter", "ward", "zone"
+            ]
+            
+            for query in area_queries:
+                try:
+                    # Search for areas using text search
+                    places_result = gmaps.places(
+                        query=query,
+                        location=(center_lat, center_lng),
+                        radius=radius_meters,
+                        type='locality'  # Focus on locality types
+                    )
+                    
+                    for place in places_result.get('results', []):
+                        area_data = self.extract_area_data(place, center_lat, center_lng)
+                        if area_data and area_data not in nearby_areas:
+                            nearby_areas.append(area_data)
+                            
+                except Exception as e:
+                    print(f"Error searching for {query}: {e}")
+                    continue
+
+            # Additional search for specific place types that represent areas
+            area_types = ['locality', 'sublocality', 'neighborhood', 'political']
+            
+            for place_type in area_types:
+                try:
+                    places_result = gmaps.places_nearby(
+                        location=(center_lat, center_lng),
+                        radius=radius_meters,
+                        type=place_type
+                    )
+                    
+                    for place in places_result.get('results', []):
+                        area_data = self.extract_area_data(place, center_lat, center_lng)
+                        if area_data and area_data not in nearby_areas:
+                            nearby_areas.append(area_data)
+                            
+                except Exception as e:
+                    print(f"Error searching type {place_type}: {e}")
+                    continue
+
+            return nearby_areas
+            
+        except Exception as e:
+            print(f"Error occurred in Google Places API: {e}")
+            return []
+
+    def extract_area_data(self, place, center_lat, center_lng):
+        """Extract area data from Google Places result."""
+        try:
+            name = place.get('name', '')
+            types = place.get('types', [])
+            
+            # Filter out non-area places
+            if not self.is_valid_area(name, types):
+                return None
+            
+            lat = place['geometry']['location']['lat']
+            lng = place['geometry']['location']['lng']
+            
+            return {
+                "name": name,
+                "lat": lat,
+                "lng": lng
+            }
+        except Exception as e:
+            print(f"Error extracting area data: {e}")
+            return None
+
+    def is_valid_area(self, name, types):
+        """Check if this is a valid area name (not a specific POI)."""
+        if not name or name.lower() == 'unnamed':
+            return False
         
-        overpass_query = f"""
-        [out:json];
-        (
-            node["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
-            node["place"](around:{radius * 1609.34},{center_lat},{center_lng});
-            node["building"](around:{radius * 1609.34},{center_lat},{center_lng});
-            node["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
-            node["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
-            way["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
-            way["place"](around:{radius * 1609.34},{center_lat},{center_lng});
-            way["building"](around:{radius * 1609.34},{center_lat},{center_lng});
-            way["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
-            way["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
-            relation["amenity"](around:{radius * 1609.34},{center_lat},{center_lng});
-            relation["place"](around:{radius * 1609.34},{center_lat},{center_lng});
-            relation["building"](around:{radius * 1609.34},{center_lat},{center_lng});
-            relation["shop"](around:{radius * 1609.34},{center_lat},{center_lng});
-            relation["highway"](around:{radius * 1609.34},{center_lat},{center_lng});
-        );
-        out body 20;
-        """
-        response = requests.get(overpass_url, params={'data': overpass_query})
-        data = response.json()
-
-        # List of nearby areas
-        nearby_areas = []
-        for element in data['elements']:
-            if 'tags' in element and 'name' in element['tags']:
-                name = element['tags']['name']
-                lat = element['lat'] if 'lat' in element else None
-                lng = element['lon'] if 'lon' in element else None
-
-                if lat and lng:
-                    nearby_areas.append({"name": name, "lat": lat, "lng": lng})
-
-        return nearby_areas
+        # Exclude specific point of interest types
+        excluded_types = [
+            'establishment', 'point_of_interest', 'food', 'restaurant', 
+            'mosque', 'church', 'temple', 'hospital', 'school', 'university',
+            'store', 'shop', 'mall', 'bank', 'atm', 'gas_station', 'parking'
+        ]
+        
+        # If it has any excluded types, it's probably not an area
+        if any(excluded in types for excluded in excluded_types):
+            return False
+        
+        # Valid area indicators
+        area_indicators = [
+            'town', 'village', 'city', 'borough', 'district', 
+            'neighborhood', 'suburb', 'locality', 'municipality',
+            'colony', 'sector', 'block', 'area', 'township'
+        ]
+        
+        name_lower = name.lower()
+        
+        # Check if name contains area indicators or is a simple name
+        return (any(indicator in name_lower for indicator in area_indicators) or
+                'locality' in types or 'sublocality' in types or 
+                'neighborhood' in types or 'political' in types)
 
     def filter_areas_within_radius(self, areas, center_lat, center_lng, radius):
-        """Filter the areas that are within the radius using multiple threads."""
-        with ThreadPoolExecutor() as executor:
-            results = list(executor.map(lambda area: self.calculate_distance(area, center_lat, center_lng, radius), areas))
+        """Filter areas to ensure they are within the exact radius."""
+        filtered_areas = []
+        
+        for area in areas:
+            try:
+                distance = geodesic((center_lat, center_lng), (area['lat'], area['lng'])).miles
+                if distance <= radius:
+                    filtered_areas.append(area)
+            except Exception as e:
+                print(f"Error calculating distance: {e}")
+                continue
+                
+        return filtered_areas
 
-        # Filter out areas that are beyond the radius
-        return [area for area, is_within in zip(areas, results) if is_within]
+    def remove_duplicates(self, areas):
+        """Remove duplicate areas by name."""
+        seen_names = set()
+        unique_areas = []
+        
+        for area in areas:
+            if area['name'] not in seen_names:
+                seen_names.add(area['name'])
+                unique_areas.append(area)
+                
+        return unique_areas
 
-    def calculate_distance(self, area, center_lat, center_lng, radius):
-        """Calculate the distance and check if the area is within the radius."""
-        distance = geodesic((center_lat, center_lng), (area['lat'], area['lng'])).miles
-        return distance <= radius
+    def get_additional_areas(self, center_lat, center_lng, radius, existing_areas):
+        """Get additional areas if we don't have enough results."""
+        try:
+            gmaps = googlemaps.Client(key="AIzaSyDNdts5OXZbt-RWwxeFcz4pi6E2EqPSl7s")
+            radius_meters = radius * 1609.34
+            
+            existing_names = {area['name'] for area in existing_areas}
+            additional_areas = []
+            
+            # Try broader searches
+            broader_searches = [
+                "residential area", "housing society", "town", "village"
+            ]
+            
+            for search_term in broader_searches:
+                try:
+                    places_result = gmaps.places(
+                        query=search_term,
+                        location=(center_lat, center_lng),
+                        radius=radius_meters
+                    )
+                    
+                    for place in places_result.get('results', []):
+                        area_data = self.extract_area_data(place, center_lat, center_lng)
+                        if (area_data and area_data['name'] not in existing_names and
+                            area_data not in additional_areas):
+                            additional_areas.append(area_data)
+                            
+                except Exception as e:
+                    print(f"Error in broader search {search_term}: {e}")
+                    continue
+            
+            return additional_areas
+            
+        except Exception as e:
+            print(f"Error getting additional areas: {e}")
+            return []
+
+
+
+
+
+
 
 
 
