@@ -999,16 +999,20 @@ def submit_feedback_form(request, token):
 
 # update
 
-# views.py - Admin views mein bhi field show karen
 class AllFeedbackFormResponsesAPIView(APIView):
     """Get ALL feedback form responses (Admin only)"""
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
         form_responses = FeedbackFormResponse.objects.all().select_related('feedback')
-        
+
+        # Apply pagination
+        paginator = JobPostsPagination()
+        paginated_queryset = paginator.paginate_queryset(form_responses, request, view=self)
+
+        # Serialize only the paginated data
         data = []
-        for response in form_responses:
+        for response in paginated_queryset:
             data.append({
                 'id': response.id,
                 'satisfaction_level': response.satisfaction_level,
@@ -1031,13 +1035,11 @@ class AllFeedbackFormResponsesAPIView(APIView):
                 'user_email': response.feedback.user.email if response.feedback.user else None,
             })
         
-        return Response({
-            'count': len(data),
-            'results': data
-        })
+        # Return paginated response
+        return paginator.get_paginated_response(data)
+    
 
 class FeedbackFormResponseByIdAPIView(APIView):
-    """Get specific feedback form response by ID (Admin only)"""
     permission_classes = [IsAuthenticated]  # Only admin can access
     
     def get(self, request, response_id):
@@ -1060,6 +1062,7 @@ class FeedbackFormResponseByIdAPIView(APIView):
                 'job_id': response.feedback.job_id,
                 'service_area': response.feedback.service_area,
                 'is_satisfied': response.feedback.is_satisfied,
+                'feedback_submitted': response.feedback.feedback_submitted,  # NEW FIELD ADDED HERE
                 'feedback_created_at': response.feedback.created_at,
                 'user_id': response.feedback.user.id if response.feedback.user else None,
                 'user_email': response.feedback.user.email if response.feedback.user else None,
@@ -1073,6 +1076,81 @@ class FeedbackFormResponseByIdAPIView(APIView):
                 {'error': 'Feedback form response not found'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+# class AllFeedbackFormResponsesAPIView(APIView):
+#     """Get ALL feedback form responses (Admin only)"""
+#     permission_classes = [IsAuthenticated]
+    
+#     def get(self, request):
+#         form_responses = FeedbackFormResponse.objects.all().select_related('feedback')
+        
+#         data = []
+#         for response in form_responses:
+#             data.append({
+#                 'id': response.id,
+#                 'satisfaction_level': response.satisfaction_level,
+#                 'satisfaction_level_display': response.get_satisfaction_level_display(),
+#                 'issues_faced': response.issues_faced,
+#                 'suggestions': response.suggestions,
+#                 'would_recommend': response.would_recommend,
+#                 'contact_permission': response.contact_permission,
+#                 'created_at': response.created_at,
+                
+#                 # Feedback details
+#                 'feedback_id': response.feedback.id,
+#                 'email': response.feedback.email,
+#                 'job_id': response.feedback.job_id,
+#                 'service_area': response.feedback.service_area,
+#                 'is_satisfied': response.feedback.is_satisfied,
+#                 'feedback_submitted': response.feedback.feedback_submitted,  # NEW FIELD
+#                 'feedback_created_at': response.feedback.created_at,
+#                 'user_id': response.feedback.user.id if response.feedback.user else None,
+#                 'user_email': response.feedback.user.email if response.feedback.user else None,
+#             })
+        
+#         return Response({
+#             'count': len(data),
+#             'results': data
+#         })
+
+# class FeedbackFormResponseByIdAPIView(APIView):
+#     """Get specific feedback form response by ID (Admin only)"""
+#     permission_classes = [IsAuthenticated]  # Only admin can access
+    
+#     def get(self, request, response_id):
+#         try:
+#             response = FeedbackFormResponse.objects.select_related('feedback').get(id=response_id)
+            
+#             data = {
+#                 'id': response.id,
+#                 'satisfaction_level': response.satisfaction_level,
+#                 'satisfaction_level_display': response.get_satisfaction_level_display(),
+#                 'issues_faced': response.issues_faced,
+#                 'suggestions': response.suggestions,
+#                 'would_recommend': response.would_recommend,
+#                 'contact_permission': response.contact_permission,
+#                 'created_at': response.created_at,
+                
+#                 # Feedback details
+#                 'feedback_id': response.feedback.id,
+#                 'email': response.feedback.email,
+#                 'job_id': response.feedback.job_id,
+#                 'service_area': response.feedback.service_area,
+#                 'is_satisfied': response.feedback.is_satisfied,
+#                 'feedback_created_at': response.feedback.created_at,
+#                 'user_id': response.feedback.user.id if response.feedback.user else None,
+#                 'user_email': response.feedback.user.email if response.feedback.user else None,
+#                 'crm_connection': response.feedback.crm_connection.connection_name if response.feedback.crm_connection else None,
+#             }
+            
+#             return Response(data)
+            
+#         except FeedbackFormResponse.DoesNotExist:
+#             return Response(
+#                 {'error': 'Feedback form response not found'}, 
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
 
 # class CRMJobCreateAPIView(APIView):
 #     """Create a job in the connected CRM"""
