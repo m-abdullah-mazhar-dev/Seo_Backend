@@ -782,6 +782,8 @@ class OAuthCallbackAPIView(APIView):
             token_data = self.exchange_code_for_token(crm_type, code, redirect_uri, location, code_verifier)
             
             if token_data:
+                instance_url = token_data['instance_url']
+                print(f"Instance URL: {instance_url}")
                 # Create or update CRM connection
                 connection, created = CRMConnection.objects.get_or_create(
                     user=request.user,
