@@ -346,6 +346,8 @@ class CRMType(models.Model):
                 self.oauth_authorize_url = 'https://secure.getjobber.com/oauth/authorize'
             elif self.provider == 'zendesk':
                 self.oauth_authorize_url = 'https://www.zendesk.com/oauth/authorizations/new'
+            elif self.provider == 'salesforce':
+                self.oauth_authorize_url = 'https://login.salesforce.com/services/oauth2/authorize'
                 
         if not self.oauth_token_url:
             if self.provider == 'hubspot':
@@ -356,6 +358,8 @@ class CRMType(models.Model):
                 self.oauth_token_url = 'https://api.getjobber.com/oauth/token'
             elif self.provider == 'zendesk':
                 self.oauth_token_url = 'https://www.zendesk.com/oauth/tokens' 
+            elif self.provider == 'salesforce':
+                self.oauth_token_url = 'https://login.salesforce.com/services/oauth2/token'
                 
         super().save(*args, **kwargs)
 
@@ -426,6 +430,7 @@ class OAuthState(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     state = models.CharField(max_length=100, unique=True)
     crm_type_id = models.IntegerField()
+    code_verifier = models.CharField(max_length=255, blank=True, null=True)  # For PKCE
     redirect_uri = models.URLField()
     created_at = models.DateTimeField(auto_now_add=True)
     

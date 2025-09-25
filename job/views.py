@@ -586,7 +586,19 @@ class OAuthInitAPIView(APIView):
             )
             
             # Build the authorization URL
-            auth_url = self.build_authorization_url(crm_type, redirect_uri, state)
+            auth_result = self.build_authorization_url(crm_type, redirect_uri, state)
+            
+            # Handle Salesforce case where we get both URL and code_verifier
+            if isinstance(auth_result, dict):
+                auth_url = auth_result["url"]
+                code_verifier = auth_result["code_verifier"]
+                
+                # Update the OAuthState with code_verifier
+                oauth_state = OAuthState.objects.get(state=state, user=request.user)
+                oauth_state.code_verifier = code_verifier
+                oauth_state.save()
+            else:
+                auth_url = auth_result
             
             return Response({"authorization_url": auth_url})
         
@@ -650,6 +662,38 @@ class OAuthInitAPIView(APIView):
             from urllib.parse import urlencode
             # Use your subdomain for the authorization URL
             return f"https://{subdomain}.zendesk.com/oauth/authorizations/new?{urlencode(params)}"
+        elif crm_type.provider == 'salesforce':
+            from urllib.parse import urlencode
+            import secrets
+            import base64
+            import hashlib
+            
+            # Generate PKCE parameters for Salesforce
+            code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
+            code_challenge = base64.urlsafe_b64encode(
+                hashlib.sha256(code_verifier.encode('utf-8')).digest()
+            ).decode('utf-8').rstrip('=')
+            
+            # Salesforce OAuth 2.0 authorization URL with PKCE
+            params = {
+                "client_id": settings.SALESFORCE_CLIENT_ID,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": "api refresh_token",
+                "state": state,
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            }
+            # Return both URL and code_verifier for Salesforce
+            # Use test.salesforce.com for sandbox (uncomment the line below if using sandbox)
+            # return {
+            #     "url": f"https://test.salesforce.com/services/oauth2/authorize?{urlencode(params)}",
+            #     "code_verifier": code_verifier
+            # }
+            return {
+                "url": f"https://login.salesforce.com/services/oauth2/authorize?{urlencode(params)}",
+                "code_verifier": code_verifier
+            }
         
         # Add other CRM providers here
         return None
@@ -659,11 +703,46 @@ class OAuthCallbackAPIView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
+        # Check for OAuth errors first
+        error = request.GET.get('error')
+        error_description = request.GET.get('error_description', '')
+        
+        if error:
+            logger.error(f"OAuth Error: {error} - {error_description}")
+            
+            # Handle specific Salesforce errors
+            if error == 'OAUTH_AUTHORIZATION_BLOCKED':
+                return Response({
+                    "error": "Salesforce OAuth Authorization Blocked",
+                    "error_description": error_description,
+                    "solution": "Cross-org OAuth flows are not supported. Please check your Salesforce Connected App configuration:",
+                    "steps": [
+                        "1. Go to Salesforce Setup > App Manager",
+                        "2. Find your Connected App and click 'Edit'",
+                        "3. In OAuth Settings, enable 'Enable OAuth Settings'",
+                        "4. Add 'Cross-org OAuth flows' to the Selected OAuth Scopes",
+                        "5. Save the changes and try again"
+                    ]
+                }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    "error": f"OAuth authorization failed: {error}",
+                    "error_description": error_description,
+                    "details": "Please check your Salesforce Connected App configuration and ensure cross-org OAuth flows are enabled."
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
         serializer = OAuthCallbackSerializer(data=request.GET)
         if serializer.is_valid():
-            code = serializer.validated_data['code']
+            code = serializer.validated_data.get('code')
             state = serializer.validated_data['state']
             location = request.GET.get('location', '')  
+            
+            # If code is missing, it means there was an OAuth error
+            if not code:
+                return Response({
+                    "error": "Authorization code missing",
+                    "details": "The OAuth callback did not receive an authorization code. This usually indicates an OAuth error occurred during the authorization process."
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             # Verify state parameter
             if state != request.session.get('oauth_state'):
@@ -673,6 +752,7 @@ class OAuthCallbackAPIView(APIView):
                         # Use database values as backup
                         crm_type_id = oauth_state.crm_type_id
                         redirect_uri = oauth_state.redirect_uri
+                        code_verifier = oauth_state.code_verifier  # Get PKCE code_verifier
                         # Clean up the used state
                         oauth_state.delete()
                     else:
@@ -687,6 +767,15 @@ class OAuthCallbackAPIView(APIView):
             else:
                 crm_type_id = request.session.get('oauth_crm_type')
                 redirect_uri = request.session.get('oauth_redirect_uri')
+                
+                # For Salesforce, we still need to get code_verifier from database
+                code_verifier = None
+                try:
+                    oauth_state = OAuthState.objects.get(state=state, user=request.user)
+                    code_verifier = oauth_state.code_verifier
+                    oauth_state.delete()  # Clean up
+                except OAuthState.DoesNotExist:
+                    pass
 
                             # Clear session data
                 for key in ['oauth_state', 'oauth_crm_type', 'oauth_redirect_uri']:
@@ -702,9 +791,11 @@ class OAuthCallbackAPIView(APIView):
             crm_type = get_object_or_404(CRMType, id=crm_type_id)
             
             # Exchange code for access token
-            token_data = self.exchange_code_for_token(crm_type, code, redirect_uri,location)
+            token_data = self.exchange_code_for_token(crm_type, code, redirect_uri, location, code_verifier)
             
             if token_data:
+                instance_url = token_data['instance_url']
+                print(f"Instance URL: {instance_url}")
                 # Create or update CRM connection
                 connection, created = CRMConnection.objects.get_or_create(
                     user=request.user,
@@ -741,10 +832,10 @@ class OAuthCallbackAPIView(APIView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    def exchange_code_for_token(self, crm_type, code, redirect_uri,location=''):
+    def exchange_code_for_token(self, crm_type, code, redirect_uri, location='', code_verifier=None):
+        # Check for HubSpot
         if crm_type.provider == 'hubspot':
             url = "https://api.hubapi.com/oauth/v1/token"
-            
             data = {
                 'grant_type': 'authorization_code',
                 'client_id': settings.HUBSPOT_CLIENT_ID,
@@ -752,17 +843,16 @@ class OAuthCallbackAPIView(APIView):
                 'redirect_uri': redirect_uri,
                 'code': code
             }
-            
             try:
                 response = requests.post(url, data=data)
                 if response.status_code == 200:
                     return response.json()
-            except requests.RequestException:
-                pass
+            except requests.RequestException as e:
+                logger.error(f"❌ HubSpot token exchange error: {str(e)}")
+
+        # Check for Zoho
         elif crm_type.provider == 'zoho':
-            # Use .com domain (most common)
             token_url = "https://accounts.zoho.com/oauth/v2/token"
-            
             data = {
                 'grant_type': 'authorization_code',
                 'client_id': settings.ZOHO_CLIENT_ID,
@@ -770,33 +860,38 @@ class OAuthCallbackAPIView(APIView):
                 'redirect_uri': redirect_uri,
                 'code': code
             }
-            
             try:
                 response = requests.post(token_url, data=data)
-                print(f"Zoho token exchange response: {response.status_code}")
-                print(f"Zoho token exchange response text: {response.text}")
-                
                 if response.status_code == 200:
                     return response.json()
                 else:
-                    # Log the detailed error
-                    print(f"Zoho token exchange failed: {response.text}")
-                    
+                    logger.error(f"❌ Zoho token exchange failed: {response.text}")
             except requests.RequestException as e:
-                print(f"Zoho token exchange error: {str(e)}")
+                logger.error(f"❌ Zoho token exchange error: {str(e)}")
 
+        # Check for Jobber
         elif crm_type.provider == 'jobber':
-                url = "https://api.getjobber.com/api/oauth/token"
-                data = {
-                    'grant_type': 'authorization_code',
-                    'client_id': settings.JOBBER_CLIENT_ID,
-                    'client_secret': settings.JOBBER_CLIENT_SECRET,
-                    'redirect_uri': redirect_uri,
-                    'code': code
-                }
-                headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        elif crm_type.provider == "zendesk":
-            subdomain = settings.ZENDESK_SUBDOMAIN  # Get from settings
+            url = "https://api.getjobber.com/api/oauth/token"
+            data = {
+                'grant_type': 'authorization_code',
+                'client_id': settings.JOBBER_CLIENT_ID,
+                'client_secret': settings.JOBBER_CLIENT_SECRET,
+                'redirect_uri': redirect_uri,
+                'code': code
+            }
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            try:
+                response = requests.post(url, data=data, headers=headers)
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.error(f"❌ Jobber token exchange failed: {response.text}")
+            except requests.RequestException as e:
+                logger.error(f"❌ Jobber token exchange error: {str(e)}")
+
+        # Check for Zendesk
+        elif crm_type.provider == 'zendesk':
+            subdomain = settings.ZENDESK_SUBDOMAIN
             url = f'https://{subdomain}.zendesk.com/oauth/tokens'
             data = {
                 'grant_type': 'authorization_code',
@@ -805,35 +900,39 @@ class OAuthCallbackAPIView(APIView):
                 'code': code,
                 'redirect_uri': redirect_uri
             }
-            
             try:
-                print(f"🔄 Attempting Zendesk token exchange at: {url}")
-                print(f"📝 Data: {data}")
-                
                 response = requests.post(url, data=data)
-                print(f"📊 Response status: {response.status_code}")
-                print(f"📄 Response text: {response.text}")
-                
                 if response.status_code == 200:
                     return response.json()
                 else:
                     logger.error(f"❌ Zendesk token exchange failed: {response.text}")
-                    return None
-                    
             except requests.RequestException as e:
                 logger.error(f"❌ Zendesk token exchange error: {str(e)}")
-                return None
-        else:
-                logger.error(f"❌ Unsupported CRM provider: {crm_type.provider}")
-                return None
 
-        response = requests.post(url, data=data, headers=headers)
-        if response.status_code == 200:
-            return response.json()
+        # Check for Salesforce
+        elif crm_type.provider == 'salesforce':
+            url = "https://login.salesforce.com/services/oauth2/token"
+            data = {
+                'grant_type': 'authorization_code',
+                'client_id': settings.SALESFORCE_CLIENT_ID,
+                'client_secret': settings.SALESFORCE_CLIENT_SECRET,
+                'redirect_uri': redirect_uri,
+                'code': code,
+                'code_verifier': code_verifier  # PKCE code_verifier
+            }
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            try:
+                response = requests.post(url, data=data, headers=headers)
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.error(f"❌ Salesforce token exchange failed: {response.text}")
+            except requests.RequestException as e:
+                logger.error(f"❌ Salesforce token exchange error: {str(e)}")
+
         else:
-            logger.error(f"❌ Token exchange failed ({crm_type.provider}): {response.text}")
+            logger.error(f"❌ Unsupported CRM provider: {crm_type.provider}")
             return None
-
         
         
     
@@ -979,51 +1078,6 @@ class CRMWebhookAPIView(APIView):
 from django.http import HttpResponseRedirect
 
 
-# class FeedbackAPI(APIView):
-#     """Handle feedback responses"""
-#     permission_classes = [AllowAny]
-    
-#     def get(self, request, token, answer):
-#         try:
-#             feedback = ClientFeedback.objects.get(token=token)
-#         except ClientFeedback.DoesNotExist:
-#             return Response({"error": "Invalid or expired link"}, status=status.HTTP_404_NOT_FOUND)
-        
-#         # Update feedback
-#         feedback.is_satisfied = (answer == "yes")
-#         feedback.save()
-        
-#         # Base response
-#         response_data = {
-#             "satisfied": feedback.is_satisfied,
-#             "email": feedback.email,
-#             "job_id": feedback.job_id,
-#             "service_area": feedback.service_area,
-#         }
-        
-#         if feedback.is_satisfied:
-#             # Now find business location using service_area + user
-#             # from .models import OnboardingForm, BusinessLocation
-            
-#             onboarding_form = OnboardingForm.objects.filter(email=feedback.email).first()
-#             if onboarding_form:
-#                 location = BusinessLocation.objects.filter(onboarding_form=onboarding_form).first()
-#                 if location:
-#                     response_data["review_url"] = location.location_url
-#             return Response(response_data, status=status.HTTP_200_OK)
-#         else:
-#             # form = BusinessDetails.objects.filter(user = feedback.user).first()
-#             # print("form------------",form)
-#             # if form:
-#                 # response_data["feedback_url"] = form.form_url
-#             # response_data["feedback_url"] = f"{settings.FRONTEND_URL}job/feedback/form/{token}/"
-#             return HttpResponseRedirect(f"{settings.FRONTEND_URL}job/feedback/form/{token}/")
-        
-#         # return Response(response_data, status=status.HTTP_200_OK)
-
-
-# update
-# views.py - FeedbackAPI class update karen
 class FeedbackAPI(APIView):
     """Handle feedback responses"""
     permission_classes = [AllowAny]
@@ -1055,10 +1109,24 @@ class FeedbackAPI(APIView):
         }
         
         if feedback.is_satisfied:
-            # Your existing code for satisfied users...
+            # Now find business location using service_area + user
+            # from .models import OnboardingForm, BusinessLocation
+            
+            onboarding_form = OnboardingForm.objects.filter(email=feedback.email).first()
+            if onboarding_form:
+                location = BusinessLocation.objects.filter(onboarding_form=onboarding_form).first()
+                if location:
+                    response_data["review_url"] = location.location_url
             return Response(response_data, status=status.HTTP_200_OK)
         else:
+            # form = BusinessDetails.objects.filter(user = feedback.user).first()
+            # print("form------------",form)
+            # if form:
+                # response_data["feedback_url"] = form.form_url
+            # response_data["feedback_url"] = f"{settings.FRONTEND_URL}job/feedback/form/{token}/"
             return HttpResponseRedirect(f"{settings.FRONTEND_URL}job/feedback/form/{token}/")
+        
+        # return Response(response_data, status=status.HTTP_200_OK)
     
 
 # views.py
@@ -3122,3 +3190,96 @@ class JobberJobCloseAPIView(APIView):
             return Response(result, status=status.HTTP_200_OK)
         else:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================== Salesforce CRM Operations ====================
+
+class SalesforceOpportunityCreateAPIView(APIView):
+    """Create an opportunity in Salesforce CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'salesforce':
+            return Response(
+                {"error": "This endpoint is only for Salesforce CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        crm_service = get_crm_service(connection)
+        result = crm_service.create_job(request.data)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_201_CREATED)
+        else:
+            # Check if it's a scope error that requires re-authentication
+            error_msg = result.get('error', '')
+            if 're-authenticate' in error_msg.lower() or 'insufficient permissions' in error_msg.lower():
+                connection.is_connected = False
+                connection.save()
+            
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SalesforceOpportunityCloseAPIView(APIView):
+    """Close an opportunity in Salesforce CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id, opportunity_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'salesforce':
+            return Response(
+                {"error": "This endpoint is only for Salesforce CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        won = request.data.get('won', True)
+        crm_service = get_crm_service(connection)
+        result = crm_service.close_job(opportunity_id, won)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SalesforceContactCreateAPIView(APIView):
+    """Create a contact in Salesforce CRM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, connection_id):
+        connection = get_object_or_404(CRMConnection, id=connection_id, user=request.user)
+        
+        if not connection.is_connected:
+            return Response(
+                {"error": "CRM connection is not active. Please reconnect."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if connection.crm_type.provider != 'salesforce':
+            return Response(
+                {"error": "This endpoint is only for Salesforce CRM connections"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # For Salesforce, we'll create a contact using the REST API
+        # This would require additional methods in the SalesforceService class
+        return Response(
+            {"error": "Contact creation not yet implemented for Salesforce"}, 
+            status=status.HTTP_501_NOT_IMPLEMENTED
+        )

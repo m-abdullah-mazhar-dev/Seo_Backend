@@ -63,11 +63,20 @@ app.conf.beat_schedule = {
     },
     'check-zendesk-solved-tickets': {
         'task': 'job.tasks.check_zendesk_solved_tickets',
-        'schedule': crontab(),  # Runs every minute
-        # 'schedule': crontab(minute=15, hour='*/4'),  # Example: every 4 hours at :15
-        # 'options': {
-        #     'expires': 14400,  # 4 hours
-        # }
+        # 'schedule': crontab(),  # Runs every minute
+        'schedule': crontab(minute=15, hour='*/3'), 
+        'options': {
+            'expires': 10800,  # 3 hours
+        } # Example: every 4 hours at :15
+    },
+    # Salesforce task (new)
+    'check-salesforce-closed-jobs': {
+        'task': 'job.tasks.check_salesforce_closed_jobs',
+        # 'schedule': crontab(),  # Runs every minute
+        'schedule': crontab(minute=15, hour='*/4'),  # Run every 4 hours, 15 minutes offset
+        'options': {
+            'expires': 14400,  # 4 hours
+        }
     },
     
 }
