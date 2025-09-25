@@ -84,9 +84,6 @@
 # token_url = "https://login.salesforce.com/services/oauth2/token"
 
 # # Refresh Token and Client Credentials (replace with your actual values)
-# refresh_token = "5Aep861eN26Sp9j0R4X73kMngLOFh7yY7YeoS8fl1yMA5IvAcFvRXlHL3ogNv07gHFCwH4nC1FXk9PIewCrPqxi"  # Replace with your refresh token
-# client_id = "3MVG9dAEux2v1sLuuO9C05_KiAeVJrUz1cPlk.4t9bNeeImmXm2_YEA64e2z0nxMFtxdAEdMJ_t03.G3yk.Z2"  # Replace with your Salesforce client ID
-# client_secret = "9C370541AC0478ABDA9AE130A00296E7406FCD1B3C86E42C751C24457C6F6432"  # Replace with your Salesforce client secret
 
 # # Data for refreshing the token
 # data = {
@@ -114,7 +111,7 @@ import requests
 
 # Your Salesforce instance URL and new access token
 instance_url = "https://orgfarm-d211c8f8aa-dev-ed.develop.my.salesforce.com"
-access_token = "00DgL00000BqV9R!AQEAQMvUPjew1sGM1EyfUP.onAdmmbAXny8zvNjqRS_rhaadEMLTpmEmXUxzYBGpu7FxIqJXFxFmjkXr4m01K.6.2PQnSwHl"  # Use the new access token obtained from refresh
+# access_token = "00DgL00000BqV9R!AQEAQMvUPjew1sGM1EyfUP.onAdmmbAXny8zvNjqRS_rhaadEMLTpmEmXUxzYBGpu7FxIqJXFxFmjkXr4m01K.6.2PQnSwHl"  # Use the new access token obtained from refresh
 
 # Salesforce API URL to query Closed Won Opportunities
 api_url = f"{instance_url}/services/data/v52.0/query?q=SELECT+Name,+CloseDate,+Amount,+StageName,+Account.Name,+Description,+Owner.Name+FROM+Opportunity"
