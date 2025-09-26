@@ -198,12 +198,31 @@ def process_closed_deal(deal, connection):
             'client_subdomain': client_name  # 
         }
     )
+
+    user = connection.user
+    company_name = None
+    onboarding = getattr(user, "onboardingform", None)
+    if onboarding and onboarding.exists():
+        set_current_service("seo")
+        company_name = onboarding.first().company_name
+    else:
+        job_onboarding = getattr(user, "jobonboardingforms", None)
+        if job_onboarding and job_onboarding.exists():
+            set_current_service("trucking")
+            company_name = job_onboarding.first().company_name
+        else:
+            company_name = None  # fallback
+
+    if not company_name:
+        company_name = client_name
+    
+
     
     # Generate feedback URLs
     # base_url = settings.FRONTEND_URL.rstrip('/')
     # yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     # no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
-    base_url = f"http://{client_name}.seo.galaxywholesales.com".rstrip('/')
+    base_url = f"http://{company_name}.seo.galaxywholesales.com".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
@@ -491,6 +510,24 @@ def process_hubspot_deal(deal, connection):
 
         }
     )
+
+    user = connection.user
+    company_name = None
+    onboarding = getattr(user, "onboardingform", None)
+    if onboarding and onboarding.exists():
+        set_current_service("seo")
+        company_name = onboarding.first().company_name
+    else:
+        job_onboarding = getattr(user, "jobonboardingforms", None)
+        if job_onboarding and job_onboarding.exists():
+            set_current_service("trucking")
+            company_name = job_onboarding.first().company_name
+        else:
+            company_name = None  # fallback
+
+    if not company_name:
+        company_name = client_name
+    
     
     # # Generate feedback URLs
     # base_url = settings.FRONTEND_URL.rstrip('/')
@@ -498,7 +535,7 @@ def process_hubspot_deal(deal, connection):
     # no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
 
         # 🔥 UPDATED: Generate feedback URLs with client-specific sub-domain
-    base_url = f"http://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
+    base_url = f"http://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
@@ -656,9 +693,27 @@ def process_jobber_job(job, connection):
             'client_subdomain': client_name  # 🔥 NEW
         }
     )
+
+    user = connection.user
+    company_name = None
+    onboarding = getattr(user, "onboardingform", None)
+    if onboarding and onboarding.exists():
+        set_current_service("seo")
+        company_name = onboarding.first().company_name
+    else:
+        job_onboarding = getattr(user, "jobonboardingforms", None)
+        if job_onboarding and job_onboarding.exists():
+            set_current_service("trucking")
+            company_name = job_onboarding.first().company_name
+        else:
+            company_name = None  # fallback
+
+    if not company_name:
+        company_name = client_name
+    
     
     # Generate feedback URLs
-    base_url = f"http://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
+    base_url = f"http://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
 
@@ -768,9 +823,27 @@ def process_salesforce_deal(deal, connection):
             'client_subdomain': client_name  # 🔥 NEW
         }
     )
+
+    user = connection.user
+    company_name = None
+    onboarding = getattr(user, "onboardingform", None)
+    if onboarding and onboarding.exists():
+        set_current_service("seo")
+        company_name = onboarding.first().company_name
+    else:
+        job_onboarding = getattr(user, "jobonboardingforms", None)
+        if job_onboarding and job_onboarding.exists():
+            set_current_service("trucking")
+            company_name = job_onboarding.first().company_name
+        else:
+            company_name = None  # fallback
+
+    if not company_name:
+        company_name = client_name
+    
     
     # Generate feedback URLs
-    base_url = f"https://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
+    base_url = f"https://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
@@ -930,6 +1003,24 @@ def process_zendesk_ticket(ticket, connection):
     
     # Get contact name
     contact_name = ticket.get('requester', {}).get('name', '')
+    user = connection.user
+    company_name = None
+    onboarding = getattr(user, "onboardingform", None)
+    if onboarding and onboarding.exists():
+        set_current_service("seo")
+        company_name = onboarding.first().company_name
+    else:
+        job_onboarding = getattr(user, "jobonboardingforms", None)
+        if job_onboarding and job_onboarding.exists():
+            set_current_service("trucking")
+            company_name = job_onboarding.first().company_name
+        else:
+            company_name = None  # fallback
+
+    if not company_name:
+        company_name = client_name
+    
+
     
     # Create feedback record
     feedback = ClientFeedback.objects.create(
@@ -953,7 +1044,7 @@ def process_zendesk_ticket(ticket, connection):
     )
     
     # Generate feedback URLs with client-specific sub-domain
-    base_url = f"http://{client_name}.{settings.FRONTEND_URL}".rstrip('/')
+    base_url = f"http://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
