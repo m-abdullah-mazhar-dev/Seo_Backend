@@ -30,12 +30,12 @@ class ServiceSerializer(serializers.ModelSerializer):
 class ServiceAreaSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceArea
-        fields = ['id', 'area_name']
+        fields = ['id', 'area_name', 'description', 'posted_on', 'clicks', 'center', 'area_list', 'business_service_areas']
 
 class BusinessLocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessLocation
-        fields = ['id', 'location_name', 'location_url','center', 'area_list', 'business_service_areas']
+        fields = ['id', 'location_name', 'location_url']
 
 
 class OnBoardingFormSerializer(serializers.ModelSerializer):
@@ -93,11 +93,11 @@ class OnBoardingFormSerializer(serializers.ModelSerializer):
         service_areas_data = validated_data.pop('service_areas')
         business_locations_data = validated_data.pop('locations')
 
-            # Handle center, area_list, business_service_areas for each location
-        for location_data in business_locations_data:
-            location_data['center'] = location_data.get('center', {"lat": 0.0, "lng": 0.0})  # Default value if not provided
-            location_data['area_list'] = location_data.get('area_list', [])
-            location_data['business_service_areas'] = location_data.get('business_service_areas', [])
+        # Handle center, area_list, business_service_areas for each service area
+        for service_area_data in service_areas_data:
+            service_area_data['center'] = service_area_data.get('center', {"lat": 0.0, "lng": 0.0})  # Default value if not provided
+            service_area_data['area_list'] = service_area_data.get('area_list', [])
+            service_area_data['business_service_areas'] = service_area_data.get('business_service_areas', [])
 
         user = self.context['request'].user
         print(user, "---------------")
@@ -253,12 +253,6 @@ class OnBoardingFormSerializer(serializers.ModelSerializer):
         for keyword_id, keyword in existing_keywords.items():
             if keyword_id not in kept_keyword_ids:
                 keyword.delete()
-
-class ServiceAreaSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ServiceArea
-        fields = ['area_name', 'description', 'posted_on', 'clicks']
-
 
 class KeywordSerializer(serializers.ModelSerializer):
     ctr = serializers.SerializerMethodField()
