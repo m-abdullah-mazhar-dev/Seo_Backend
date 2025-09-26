@@ -67,18 +67,17 @@ class ServiceArea(models.Model):
     description = models.TextField(null=True, blank=True)
     posted_on = models.DateTimeField(auto_now_add=True)
     clicks = models.PositiveIntegerField(default=0)
+    
+    # Adding fields from BusinessLocation
+    center = models.JSONField(default=dict, null=True, blank=True)
+    area_list = models.JSONField(default=list, null=True, blank=True)
+    business_service_areas = models.JSONField(default=list, null=True, blank=True)
 
 
 class BusinessLocation(models.Model):
     onboarding_form = models.ForeignKey(OnboardingForm, on_delete=models.CASCADE, related_name='locations')
     location_name = models.CharField(max_length=1000)
     location_url = models.URLField(max_length=1000)
-
-    center = models.JSONField(default=dict, null=True,blank=True)
-    
-    # Adding area_list and business_service_areas as JSON fields to store list of areas
-    area_list = models.JSONField(default=list,null=True,blank=True)
-    business_service_areas = models.JSONField(default=list,null=True, blank=True)
 
 
 class WordPressConnection(models.Model):
