@@ -347,6 +347,21 @@ class NearbyAreasAPIView(APIView):
         try:
             gmaps = googlemaps.Client(key="AIzaSyDNdts5OXZbt-RWwxeFcz4pi6E2EqPSl7s")
             
+            # First, try to resolve short URLs to get the full URL
+            try:
+                import requests
+                response = requests.get(location_url, allow_redirects=True, timeout=10)
+                full_url = response.url
+                print(f"Resolved URL: {full_url}")
+            except Exception as e:
+                print(f"Error resolving URL: {e}")
+                full_url = location_url
+            
+            # Try to extract coordinates from the URL pattern
+            coordinates = self.extract_coordinates_from_url(full_url)
+            if coordinates:
+                return coordinates
+            
             # Try to geocode the URL directly
             geocode_result = gmaps.geocode(location_url)
             
@@ -354,12 +369,59 @@ class NearbyAreasAPIView(APIView):
                 location = geocode_result[0]['geometry']['location']
                 return location['lat'], location['lng']
             else:
-                # If direct geocoding fails, try to extract address from URL
-                # This is a fallback method for URLs that might contain address info
-                return None, None
+                # Try with the resolved URL
+                geocode_result = gmaps.geocode(full_url)
+                if geocode_result:
+                    location = geocode_result[0]['geometry']['location']
+                    return location['lat'], location['lng']
+                else:
+                    return None, None
         except Exception as e:
             print(f"Error occurred in URL geocoding: {e}")
             return None, None
+
+    def extract_coordinates_from_url(self, url):
+        """Extract coordinates from Google Maps URL patterns."""
+        try:
+            import re
+            
+            # Pattern for Google Maps URLs with coordinates (@lat,lng)
+            coord_pattern = r'@(-?\d+\.\d+),(-?\d+\.\d+)'
+            match = re.search(coord_pattern, url)
+            
+            if match:
+                lat = float(match.group(1))
+                lng = float(match.group(2))
+                return lat, lng
+            
+            # Pattern for Google Maps search URLs with coordinates (31.438128,+73.131748)
+            search_coord_pattern = r'search/(\d+\.\d+),\+?(\d+\.\d+)'
+            search_match = re.search(search_coord_pattern, url)
+            
+            if search_match:
+                lat = float(search_match.group(1))
+                lng = float(search_match.group(2))
+                return lat, lng
+            
+            # Pattern for Google Maps URLs with place IDs or addresses
+            # Try to extract address from URL
+            if 'maps.google.com' in url or 'maps.app.goo.gl' in url:
+                # Try to extract place name from URL
+                place_pattern = r'place/([^/]+)'
+                place_match = re.search(place_pattern, url)
+                if place_match:
+                    place_name = place_match.group(1).replace('+', ' ')
+                    # Try to geocode the place name
+                    gmaps = googlemaps.Client(key="AIzaSyDNdts5OXZbt-RWwxeFcz4pi6E2EqPSl7s")
+                    geocode_result = gmaps.geocode(place_name)
+                    if geocode_result:
+                        location = geocode_result[0]['geometry']['location']
+                        return location['lat'], location['lng']
+            
+            return None
+        except Exception as e:
+            print(f"Error extracting coordinates from URL: {e}")
+            return None
 
     def get_nearby_areas(self, center_lat, center_lng, radius):
         """Fetch nearby areas using Google Places API with specific area-focused searches."""
