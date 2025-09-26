@@ -285,17 +285,22 @@ from geopy.distance import geodesic
 
 class NearbyAreasAPIView(APIView):
     def post(self, request):
-        # Extract area_name and radius from the request data
+        # Extract area_name, location_url and radius from the request data
         area_name = request.data.get("area_name")
+        location_url = request.data.get("location_url")
         radius = request.data.get("radius", 10)  # Default to 10 miles if not provided
 
-        if not area_name:
-            return Response({"message": "Area name is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not area_name and not location_url:
+            return Response({"message": "Either area_name or location_url is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Step 1: Get coordinates of the area_name using Google Geocoding API
-        center_lat, center_lng = self.get_coordinates(area_name)
+        # Step 1: Get coordinates using either area_name or location_url
+        if location_url:
+            center_lat, center_lng = self.get_coordinates_from_url(location_url)
+        else:
+            center_lat, center_lng = self.get_coordinates(area_name)
+            
         if center_lat is None or center_lng is None:
-            return Response({"message": "Area not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"message": "Location not found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Step 2: Get nearby areas using Google Places API
         nearby_areas = self.get_nearby_areas(center_lat, center_lng, radius)
@@ -312,10 +317,13 @@ class NearbyAreasAPIView(APIView):
             unique_areas.extend(additional_areas)
             unique_areas = self.remove_duplicates(unique_areas)
 
-        # Step 4: Return the result in the required format
+        # Step 4: Sort areas by distance (closest first) and add distance info
+        sorted_areas = self.sort_areas_by_distance(unique_areas, center_lat, center_lng)
+
+        # Step 5: Return the result in the required format
         result = {
             "center": {"lat": center_lat, "lng": center_lng},
-            "areas": unique_areas[:20]  # Ensure exactly 20 areas
+            "areas": sorted_areas[:20]  # Ensure exactly 20 areas, sorted by distance
         }
         return Response(result, status=status.HTTP_200_OK)
 
@@ -332,6 +340,25 @@ class NearbyAreasAPIView(APIView):
                 return None, None
         except Exception as e:
             print(f"Error occurred in geocoding: {e}")
+            return None, None
+
+    def get_coordinates_from_url(self, location_url):
+        """Extract coordinates from a location URL using Google Geocoding API."""
+        try:
+            gmaps = googlemaps.Client(key="AIzaSyDNdts5OXZbt-RWwxeFcz4pi6E2EqPSl7s")
+            
+            # Try to geocode the URL directly
+            geocode_result = gmaps.geocode(location_url)
+            
+            if geocode_result:
+                location = geocode_result[0]['geometry']['location']
+                return location['lat'], location['lng']
+            else:
+                # If direct geocoding fails, try to extract address from URL
+                # This is a fallback method for URLs that might contain address info
+                return None, None
+        except Exception as e:
+            print(f"Error occurred in URL geocoding: {e}")
             return None, None
 
     def get_nearby_areas(self, center_lat, center_lng, radius):
@@ -512,6 +539,38 @@ class NearbyAreasAPIView(APIView):
         except Exception as e:
             print(f"Error getting additional areas: {e}")
             return []
+
+    def sort_areas_by_distance(self, areas, center_lat, center_lng):
+        """Sort areas by distance from center point (closest first) and add distance info."""
+        try:
+            areas_with_distance = []
+            
+            for area in areas:
+                try:
+                    # Calculate distance in miles
+                    distance = geodesic((center_lat, center_lng), (area['lat'], area['lng'])).miles
+                    
+                    # Add distance to area data
+                    area_with_distance = {
+                        'name': area['name'],
+                        'lat': area['lat'],
+                        'lng': area['lng'],
+                        'distance': round(distance, 2)  # Round to 2 decimal places
+                    }
+                    areas_with_distance.append(area_with_distance)
+                    
+                except Exception as e:
+                    print(f"Error calculating distance for {area.get('name', 'unknown')}: {e}")
+                    continue
+            
+            # Sort by distance (closest first)
+            sorted_areas = sorted(areas_with_distance, key=lambda x: x['distance'])
+            
+            return sorted_areas
+            
+        except Exception as e:
+            print(f"Error sorting areas by distance: {e}")
+            return areas  # Return original areas if sorting fails
 
 
 
