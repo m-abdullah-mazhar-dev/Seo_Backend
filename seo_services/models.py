@@ -62,11 +62,11 @@ class KeywordQuestion(models.Model):
 
 
 class ServiceArea(models.Model):
-    onboarding_form = models.ForeignKey(OnboardingForm, on_delete=models.CASCADE, related_name='service_areas')
-    area_name = models.CharField(max_length=200)
+    onboarding_form = models.ForeignKey(OnboardingForm, on_delete=models.CASCADE, related_name='service_areas', null=True, blank=True)
+    area_name = models.CharField(max_length=200, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
-    posted_on = models.DateTimeField(auto_now_add=True)
-    clicks = models.PositiveIntegerField(default=0)
+    posted_on = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    clicks = models.PositiveIntegerField(default=0, null=True, blank=True)
 
 
 class BusinessLocation(models.Model):
