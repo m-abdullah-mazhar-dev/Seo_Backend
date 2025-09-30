@@ -19,6 +19,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def sanitize_subdomain(name: str) -> str:
+    name = name.lower()
+    name = re.sub(r'[^a-z0-9-]', '-', name)
+    name = re.sub(r'-+', '-', name).strip('-')
+    if not name:
+        name = f"client{random.randint(1000, 9999)}"
+    return name
+
 @shared_task
 def check_zoho_closed_jobs():
     
@@ -222,35 +231,50 @@ def process_closed_deal(deal, connection):
     # base_url = settings.FRONTEND_URL.rstrip('/')
     # yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     # no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
+
+    company_name = sanitize_subdomain(company_name)
+
     base_url = f"http://{company_name}.seo.galaxywholesales.com".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
     print(f"Generated feedback URLs - Yes: {yes_url}, No: {no_url}")
     
-    # Prepare data for n8n
-    deal_data = {
-        'id': deal_id,
-        'name': deal.get('Deal_Name', 'Unknown Deal'),
-        'amount': deal.get('Amount', ''),
-        'close_date': deal.get('Closing_Date', ''),
-        'contact_name': contact_name,
-        'email': email,
-        'service_area': deal.get('Service_Area', ''),
-        'description': deal.get('Description', ''),
-        'last_activity_time': deal.get('Last_Activity_Time', ''),
-        'user_id': connection.user.id,
-        'connection_id': connection.id,
-        'feedback_token': str(feedback.token),
+    # # Prepare data for n8n
+    # deal_data = {
+    #     'id': deal_id,
+    #     'name': deal.get('Deal_Name', 'Unknown Deal'),
+    #     'amount': deal.get('Amount', ''),
+    #     'close_date': deal.get('Closing_Date', ''),
+    #     'contact_name': contact_name,
+    #     'email': email,
+    #     'service_area': deal.get('Service_Area', ''),
+    #     'description': deal.get('Description', ''),
+    #     'last_activity_time': deal.get('Last_Activity_Time', ''),
+    #     'user_id': connection.user.id,
+    #     'connection_id': connection.id,
+    #     'feedback_token': str(feedback.token),
+    #     'yes_url': yes_url,
+    #     'no_url': no_url,
+    #     'from_email': settings.DEFAULT_FROM_EMAIL,
+    #     'current_date': timezone.now().isoformat(),
+    #     'client_subdomain': client_name  # 🔥 Send to n8n
+    # }
+
+    context = {
         'yes_url': yes_url,
         'no_url': no_url,
+        'job_id': deal_id,
+        'deal_name': deal.get('Deal_Name', 'Unknown Deal'),
         'from_email': settings.DEFAULT_FROM_EMAIL,
-        'current_date': timezone.now().isoformat(),
-        'client_subdomain': client_name  # 🔥 Send to n8n
+        'to_email': email,
+        'contact_name': contact_name,
+        'current_date': timezone.now(),
     }
     
     # Send to n8n webhook
-    return send_to_n8n(deal_data)
+    return send_feedback_email(context)
+    # return send_to_n8n(deal_data)
 
 def send_to_n8n(deal_data):
     """Send deal data to n8n's webhook for email sending"""
@@ -535,6 +559,9 @@ def process_hubspot_deal(deal, connection):
     # no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
 
         # 🔥 UPDATED: Generate feedback URLs with client-specific sub-domain
+    company_name = sanitize_subdomain(company_name)
+
+
     base_url = f"http://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
@@ -655,6 +682,7 @@ def process_jobber_connection(connection):
 
     return {"success": True, "processed_count": processed_count, "total_count": len(closed_jobs)}
 
+
 def process_jobber_job(job, connection):
     """Process a single Jobber job and send email"""
     job_id = job.get('id')
@@ -711,7 +739,7 @@ def process_jobber_job(job, connection):
     if not company_name:
         company_name = client_name
     
-    
+    company_name = sanitize_subdomain(company_name)
     # Generate feedback URLs
     base_url = f"http://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
@@ -841,9 +869,10 @@ def process_salesforce_deal(deal, connection):
     if not company_name:
         company_name = client_name
     
-    
+    company_name = sanitize_subdomain(company_name)
+
     # Generate feedback URLs
-    base_url = f"https://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
+    base_url = f"http://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
     no_url = f"{base_url}/job/feedback/{feedback.token}/no/"
     
@@ -1042,7 +1071,8 @@ def process_zendesk_ticket(ticket, connection):
             'updated_at': ticket.get('updated_at')
         }
     )
-    
+    company_name = sanitize_subdomain(company_name)
+
     # Generate feedback URLs with client-specific sub-domain
     base_url = f"http://{company_name}.{settings.FRONTEND_URL}".rstrip('/')
     yes_url = f"{base_url}/job/feedback/{feedback.token}/yes/"
