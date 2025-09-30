@@ -45,7 +45,7 @@ def process_due_seo_tasks():
     # tasks = SEOTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
 
     tasks = SEOTask.objects.filter(
-        next_run__lte=now, status='pending', is_active=True,
+        next_run__lte=now, status__in=['pending', 'failed'], is_active=True,
          user__usersubscription__status='active'
     ).order_by(
         # keyword_optimization first, then others
@@ -80,6 +80,9 @@ def process_due_seo_tasks():
 
         except Exception as e:
             logger.error(f"❌ Failed processing task ID {task.id}: {str(e)}")
+            task.status = 'failed'
+            task.next_run = timezone.now() + timedelta(minutes=5)
+            task.save(update_fields=['status', 'next_run'])
 
 
 # tasks.py
@@ -111,7 +114,7 @@ def process_due_seo_tasks():
 def process_due_job_tasks():
     logger.info(f"🔄 Job tasks started.")
     now = timezone.now()
-    tasks = JobTask.objects.filter(next_run__lte=now, status='pending', is_active=True)
+    tasks = JobTask.objects.filter(next_run__lte=now, status__in=['pending', 'failed'], is_active=True)
     logger.info(f"🔄 Found {tasks.count()} due Job tasks to process.")
 
     for task in tasks:
@@ -122,6 +125,9 @@ def process_due_job_tasks():
                 run_job_template_generation(task)  # ✅ Now passes JobTask
         except Exception as e:
             logger.error(f"❌ Failed job task ID {task.id}: {str(e)}")
+            task.status = 'failed'
+            task.next_run = timezone.now() + timedelta(minutes=5)
+            task.save(update_fields=['status', 'next_run'])
 
 
 @shared_task
