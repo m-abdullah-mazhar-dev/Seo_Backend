@@ -1093,7 +1093,7 @@ class FeedbackAPI(APIView):
         
         # Update feedback
         feedback.is_satisfied = (answer == "yes")
-        feedback.feedback_submitted = True  # NEW LINE - Mark as submitted
+        
         feedback.save()
         
         # Rest of your existing code...
@@ -1107,6 +1107,7 @@ class FeedbackAPI(APIView):
         if feedback.is_satisfied:
             # Now find business location using service_area + user
             # from .models import OnboardingForm, BusinessLocation
+            feedback.feedback_submitted = True  # NEW LINE - Mark as submitted
             
             onboarding_form = OnboardingForm.objects.filter(email=feedback.email).first()
             if onboarding_form:
@@ -1195,6 +1196,7 @@ def feedback_form_view(request, token):
     """Render feedback form for users who clicked No"""
     feedback = get_object_or_404(ClientFeedback, token=token)
     feedback.refresh_from_db()
+    print(feedback.feedback_submitted)
     if feedback.feedback_submitted:
         return redirect('feedback_already_submitted')
     
