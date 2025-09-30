@@ -1,4 +1,3 @@
-<!-- templates/feedback/feedback_form.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,7 +15,7 @@
         button { background: #dc3545; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; width: 100%; }
         button:hover { background: #c82333; }
         .rating { display: flex; justify-content: space-between; margin: 10px 0; }
-        .rating label { flex: 1; text-align: center; padding: 10px; border: 1px solid #ddd; margin: 0 5px; cursor: pointer; border-radius: 5px; }
+        .rating label { flex: 1; text-align: center; padding: 10px; border: 1px solid #ddd; margin: 0 5px; cursor: pointer; border-radius: 5px; font-size: 14px; }
         .rating input[type="radio"] { display: none; }
         .rating input[type="radio"]:checked + label { background: #dc3545; color: white; border-color: #dc3545; }
     </style>
@@ -33,19 +32,19 @@
                 <label>How satisfied were you with our service?</label>
                 <div class="rating">
                     <input type="radio" id="very_dissatisfied" name="satisfaction_level" value="very_dissatisfied">
-                    <label for="very_dissatisfied">😠</label>
+                    <label for="very_dissatisfied">Very Dissatisfied</label>
                     
                     <input type="radio" id="dissatisfied" name="satisfaction_level" value="dissatisfied">
-                    <label for="dissatisfied">😕</label>
+                    <label for="dissatisfied">Dissatisfied</label>
                     
                     <input type="radio" id="neutral" name="satisfaction_level" value="neutral">
-                    <label for="neutral">😐</label>
+                    <label for="neutral">Neutral</label>
                     
                     <input type="radio" id="satisfied" name="satisfaction_level" value="satisfied">
-                    <label for="satisfied">🙂</label>
+                    <label for="satisfied">Satisfied</label>
                     
                     <input type="radio" id="very_satisfied" name="satisfaction_level" value="very_satisfied">
-                    <label for="very_satisfied">😄</label>
+                    <label for="very_satisfied">Very Satisfied</label>
                 </div>
             </div>
 
@@ -91,18 +90,23 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                        'X-CSRFToken': data.csrfmiddlewaretoken
                     },
                     body: JSON.stringify(data)
                 });
                 
-                const result = await response.json();
-                
-                if (result.success) {
-                    document.getElementById('feedbackForm').style.display = 'none';
-                    document.getElementById('successMessage').style.display = 'block';
+                if (response.redirected) {
+                    // If redirected, follow the redirect
+                    window.location.href = response.url;
                 } else {
-                    alert('Error submitting feedback. Please try again.');
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        document.getElementById('feedbackForm').style.display = 'none';
+                        document.getElementById('successMessage').style.display = 'block';
+                    } else {
+                        alert('Error submitting feedback. Please try again.');
+                    }
                 }
             } catch (error) {
                 alert('Error submitting feedback. Please try again.');

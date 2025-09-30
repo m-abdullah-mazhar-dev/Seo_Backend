@@ -1089,11 +1089,7 @@ class FeedbackAPI(APIView):
             return Response({"error": "Invalid or expired link"}, status=status.HTTP_404_NOT_FOUND)
         
         # NEW VALIDATION - Check if feedback already submitted
-        if feedback.feedback_submitted:
-            return Response({
-                "error": "Feedback already submitted",
-                "message": "Aap already feedback submit kar chuke hain."
-            }, status=status.HTTP_400_BAD_REQUEST)
+        
         
         # Update feedback
         feedback.is_satisfied = (answer == "yes")
@@ -1124,8 +1120,10 @@ class FeedbackAPI(APIView):
             # if form:
                 # response_data["feedback_url"] = form.form_url
             # response_data["feedback_url"] = f"{settings.FRONTEND_URL}job/feedback/form/{token}/"
-            return HttpResponseRedirect(f"{settings.FRONTEND_URL}job/feedback/form/{token}/")
-        
+            #return HttpResponseRedirect(f"{settings.FRONTEND_URL}job/feedback/form/{token}/")
+            return HttpResponseRedirect(
+                f"{request.scheme}://{request.get_host()}/job/feedback/form/{token}/"
+            )
         # return Response(response_data, status=status.HTTP_200_OK)
     
 
@@ -1133,6 +1131,9 @@ class FeedbackAPI(APIView):
 from rest_framework import status
 from rest_framework.decorators import api_view, renderer_classes
 from rest_framework.renderers import TemplateHTMLRenderer, JSONRenderer
+
+from django.shortcuts import render, redirect
+
 # @api_view(['GET'])
 # @renderer_classes([TemplateHTMLRenderer])
 # def feedback_form_view(request, token):
@@ -1184,20 +1185,26 @@ from rest_framework.renderers import TemplateHTMLRenderer, JSONRenderer
 #     }, status=status.HTTP_400_BAD_REQUEST)
 
 
+def feedback_already_submitted(request):
+    return render(request, 'feedback/feedback_already_submitted.html')
+
 # update
 @api_view(['GET'])
 @renderer_classes([TemplateHTMLRenderer])
 def feedback_form_view(request, token):
     """Render feedback form for users who clicked No"""
     feedback = get_object_or_404(ClientFeedback, token=token)
+    feedback.refresh_from_db()
+    if feedback.feedback_submitted:
+        return redirect('feedback_already_submitted')
     
     # NEW VALIDATION - Check if feedback already submitted
-    if feedback.feedback_submitted:
-        return Response(
-            {'error': 'Feedback already submitted', 'message': 'Aap already feedback submit kar chuke hain.'},
-            template_name='feedback/feedback_already_submitted.html',
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    #if feedback.feedback_submitted:
+        #return Response(
+         #   {'error': 'Feedback already submitted', 'message': 'Aap already feedback submit kar chuke hain.'},
+           # template_name='feedback/feedback_already_submitted.html',
+            #status=status.HTTP_400_BAD_REQUEST
+        #)
     
     context = {
         'token': token,
@@ -1207,21 +1214,20 @@ def feedback_form_view(request, token):
     }
     
     return Response(context, template_name='feedback/feedback_form.html')
+    
+
 
 # views.py - submit_feedback_form function update karen  
 @api_view(['POST'])
-@renderer_classes([JSONRenderer])
+@renderer_classes([JSONRenderer, TemplateHTMLRenderer])
 def submit_feedback_form(request, token):
     """Handle feedback form submission"""
     feedback = get_object_or_404(ClientFeedback, token=token)
     
     # NEW VALIDATION - Check if feedback already submitted
+   
     if feedback.feedback_submitted:
-        return Response({
-            'success': False,
-            'error': 'Feedback already submitted',
-            'message': 'Aap already feedback submit kar chuke hain. Ek user sirf ek hi baar feedback de sakta hai.'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return redirect('feedback_already_submitted')
     
     # Update the main feedback record
     feedback.is_satisfied = False
