@@ -1900,7 +1900,7 @@ def map_job_form_to_api_payload(job_form):
     extra = []
     if job_form.escrow_required and job_form.escrow_description:
         extra.append(job_form.escrow_description.upper())
-    
+
     # Parse hiring areas from primary_running_areas
     # hiring_area = {
     #     "regions": [],
@@ -1958,6 +1958,8 @@ def map_job_form_to_api_payload(job_form):
             # OTR case: full USA map, koi extra filter nahi
             hiring_area["regions"] = ["USA"]
 
+   
+    print(job_form.mc_dot_number, "------------------------mc dot number ")
     
     
     # Construct the API payload
@@ -1972,8 +1974,11 @@ def map_job_form_to_api_payload(job_form):
         "contact_email": job_form.hiring_email,
         "website": job_form.company_website or "",
         "terminal_address": job_form.terminal,
-        "mc_number": job_form.mc_dot_number.split('/')[0] if '/' in job_form.mc_dot_number else job_form.mc_dot_number,
-        "dot_number": job_form.mc_dot_number.split('/')[1] if '/' in job_form.mc_dot_number and len(job_form.mc_dot_number.split('/')) > 1 else "",
+        # FIX: Proper MC/DOT formatting
+        "mc_number": job_form.mc_dot_number,
+        "dot_number": job_form.mc_dot_number,
+        # "mc_number": job_form.mc_dot_number.split('/')[0] if '/' in job_form.mc_dot_number else job_form.mc_dot_number,
+        # "dot_number": job_form.mc_dot_number.split('/')[1] if '/' in job_form.mc_dot_number and len(job_form.mc_dot_number.split('/')) > 1 else "",
         "driver_requirements": [req for req in driver_requirements if req],  # Remove empty strings
         "home_time": job_form.home_time,  # Default assumption
         "driver_benefits": driver_benefits,
@@ -2118,7 +2123,32 @@ def map_job_form_to_api_payload(job_form):
 #         # task.save()
 
 
-
+def clean_generated_html(html_content, job_form):
+    """
+    Clean up the AI-generated HTML by removing empty sections and fixing formatting
+    """
+    import re
+    
+    # Remove empty EXTRA section
+    html_content = re.sub(r'EXTRA:\s*[\r\n]*\s*[\r\n]*', '', html_content)
+    
+    # Remove empty TRAVEL section if it only has placeholder text
+    html_content = re.sub(r'TRAVEL:\s*[\r\n]*\s*● HELLO DESCRIPTION\s*[\r\n]*', '', html_content)
+    
+    # Remove localhost website
+    html_content = re.sub(r'🌐 http://localhost:3000/onboarding/step2\s*[\r\n]*', '', html_content)
+    
+    # FIX MC/DOT DISPLAY - Remove duplicate numbers like "915 / 915"
+    html_content = re.sub(r'🆔 (\d+) / \1\s*[\r\n]*', r'🆔 \1\n', html_content)
+    
+    # Also handle cases where there might be spaces or different formatting
+    html_content = re.sub(r'🆔 (\d+)\s*/\s*\1\s*[\r\n]*', r'🆔 \1\n', html_content)
+    
+    # Clean up any double line breaks caused by removals
+    html_content = re.sub(r'\n\s*\n', '\n\n', html_content)
+    
+    logger.info(f"🔧 Cleaned HTML content")
+    return html_content
 
 # test
 def run_job_template_generation(job_task_or_form, is_update=False):
@@ -2188,6 +2218,13 @@ def run_job_template_generation(job_task_or_form, is_update=False):
         job_template.ai_response_payload = data
         job_template.generated_content = job_template_content
 
+        print(job_template_content)
+
+                # CLEAN UP THE GENERATED CONTENT - PASS job_onboarding (which is the job_form)
+                # CLEAN UP THE GENERATED CONTENT BEFORE PROCESSING
+        cleaned_content = clean_generated_html(job_template_content, job_onboarding)
+        job_template.generated_content = cleaned_content
+
         if job_onboarding.position and job_onboarding.position.lower() in ["owner operator", "lease-to-rent", "lease-to-purchase"]:
             cost_structure = map_cost_structure(job_onboarding)
             data["cost_structure"] = cost_structure
@@ -2195,7 +2232,7 @@ def run_job_template_generation(job_task_or_form, is_update=False):
 
         # WordPress upload/update
         if hasattr(user, 'wordpress_connection'):
-            html_content = process_job_template_html(job_template_content)
+            html_content = process_job_template_html(cleaned_content)
             
             # For updates, use the existing page ID if available
             page_id = job_template.wp_page_id if is_update else None
