@@ -179,69 +179,45 @@ import re
 #     return page_url
 
 
-
 def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
     wp_conn = wp_conn
 
-    # Prefer AI request payload if available
-    if api_payload:
-        route = api_payload.get("route", "OTR")
-        position = api_payload.get("position", "Driver")
-        equipment = api_payload.get("hauling", "General Freight")
-        
-        # FIXED: Better pay structure logic
-        pay_structure = api_payload.get("pay_structure", "")
-        pay_value = api_payload.get("pay_type", "")
-        
-        # If pay structure is empty, try to determine from form data
-        if not pay_structure:
-            if job_form.cpm:
-                pay_structure = f"{job_form.cpm} CPM"
-                pay_value = f"${job_form.cpm}/mile"
-            elif job_form.driver_percentage:
-                pay_structure = f"{job_form.driver_percentage}% of load"
-                pay_value = f"{job_form.driver_percentage}%"
-            elif job_form.drivers_weekly_earning:
-                pay_structure = f"${job_form.drivers_weekly_earning}/week"
-                pay_value = f"${job_form.drivers_weekly_earning}"
-            else:
-                pay_structure = "Pay Not Specified"
-                pay_value = "N/A"
+    # BUILD TITLE DIRECTLY FROM JOB FORM (not from API payload)
+    # Get route, position, and equipment from the form
+    route = getattr(job_form, 'route', '')
+    position = getattr(job_form, 'position', '')
+    equipment = getattr(job_form, 'hauling_equipment', '')
+    
+    # Format the components
+    route_display = route.upper() if route else "OTR"
+    position_display = position.replace('_', ' ').title() if position else "Driver"
+    equipment_display = equipment.title() if equipment else "General Freight"
+    
+    # Determine pay information from form data
+    if job_form.cpm:
+        pay_display = f"{job_form.cpm} CPM"
+    elif job_form.driver_percentage:
+        pay_display = f"{job_form.driver_percentage}% of Load"
+    elif job_form.drivers_weekly_earning:
+        pay_display = f"${job_form.drivers_weekly_earning}/week"
     else:
-        # Fallback to job_form if payload missing
-        route = getattr(job_form, 'route', 'OTR') or 'OTR'
-        position = getattr(job_form, 'position', 'Driver') or 'Driver'
-        equipment = job_form.hauling_equipment or "General Freight"
-        
-        # FIXED: Comprehensive pay determination
-        if job_form.cpm:
-            pay_structure = f"{job_form.cpm} CPM"
-            pay_value = f"${job_form.cpm}/mile"
-        elif job_form.driver_percentage:
-            pay_structure = f"{job_form.driver_percentage}% of load"
-            pay_value = f"{job_form.driver_percentage}%"
-        elif job_form.drivers_weekly_earning:
-            pay_structure = f"${job_form.drivers_weekly_earning}/week"
-            pay_value = f"${job_form.drivers_weekly_earning}"
-        else:
-            pay_structure = "Pay Not Specified"
-            pay_value = "N/A"
+        pay_display = "Pay Not Specified"
     
-    # FIXED: Clean up the title components
-    route = route.upper() if route else "OTR"
-    position = position.title() if position else "Driver"
-    equipment = equipment.title() if equipment else "General Freight"
+    # Build the title from form data
+    title_components = [
+        route_display,
+        position_display, 
+        equipment_display,
+        pay_display
+    ]
     
-    # Build title without redundant pay_value if it's the same as pay_structure
-    if pay_value == "N/A" or pay_value in pay_structure:
-        title = f"{route} {position} – {equipment} – {pay_structure}"
-    else:
-        title = f"{route} {position} – {equipment} – {pay_structure} – {pay_value}"
+    # Remove any empty components and join with dashes
+    title_components = [comp for comp in title_components if comp and comp.strip()]
+    title = " – ".join(title_components)
     
-    # Additional cleanup for common issues
-    title = title.replace(" – – ", " – ")  # Remove double separators
-    title = title.replace("Pay Not Specified – N/A", "Pay Not Specified")  # Clean up the specific issue
-    
+    # Clean up any formatting issues
+    title = title.replace("  ", " ").strip()
+
     map_html = generate_map_html(api_payload)
 
     # POST-PROCESSING: Clean up the HTML content for local routes
@@ -340,7 +316,7 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, p
         job_template.save()
 
     logger.info(f"✅ Job Post {'updated' if page_id else 'uploaded'} to WordPress. URL: {page_url}")
-    logger.info(f"📝 Generated Title: {title}")
+    logger.info(f"📝 Generated Title from Job Form: {title}")
 
     return page_url
 
