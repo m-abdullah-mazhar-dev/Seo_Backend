@@ -201,30 +201,54 @@ def stripe_webhook(request):
         if action == 'upgrade':
             user_id = metadata.get('user_id')
             new_package_id = metadata.get('upgrade_to')
+            subscription_id = metadata.get('subscription_id')
 
             try:
                 user = User.objects.get(id=user_id)
-                subscription = UserSubscription.objects.get(user=user)
+                subscription = UserSubscription.objects.get(
+                    user=user, 
+                    stripe_subscription_id=subscription_id
+                )
                 new_package = Package.objects.get(id=new_package_id)
 
-                new_stripe_sub = stripe.Subscription.create(
-                    customer=subscription.stripe_customer_id,
-                    items=[{'price': new_package.stripe_price_id}],
-                    payment_behavior='default_incomplete',
-                    expand=['latest_invoice.payment_intent'],
-                    collection_method='charge_automatically',
-                    off_session=False
-                )
-
-                subscription.package = new_package
-                subscription.stripe_subscription_id = new_stripe_sub.id
+                # Mark subscription as active since payment succeeded
                 subscription.status = 'active'
                 subscription.save()
 
-                print(f"✅ User {user.email} upgraded to {new_package.name}")
+                print(f"✅ Upgrade payment succeeded for user {user.email}")
+                print(f"💰 Amount: {payment_intent['amount']/100}")
+                print(f"📦 Subscription: {subscription_id}")
 
             except Exception as e:
-                print(f"⚠️ Upgrade failed: {e}")
+                print(f"⚠️ Upgrade webhook failed: {e}")
+
+        # if action == 'upgrade':
+        #     user_id = metadata.get('user_id')
+        #     new_package_id = metadata.get('upgrade_to')
+
+        #     try:
+        #         user = User.objects.get(id=user_id)
+        #         subscription = UserSubscription.objects.get(user=user)
+        #         new_package = Package.objects.get(id=new_package_id)
+
+        #         new_stripe_sub = stripe.Subscription.create(
+        #             customer=subscription.stripe_customer_id,
+        #             items=[{'price': new_package.stripe_price_id}],
+        #             payment_behavior='default_incomplete',
+        #             expand=['latest_invoice.payment_intent'],
+        #             collection_method='charge_automatically',
+        #             off_session=False
+        #         )
+
+        #         subscription.package = new_package
+        #         subscription.stripe_subscription_id = new_stripe_sub.id
+        #         subscription.status = 'active'
+        #         subscription.save()
+
+        #         print(f"✅ User {user.email} upgraded to {new_package.name}")
+
+        #     except Exception as e:
+        #         print(f"⚠️ Upgrade failed: {e}")
         else:
             # Handle regular subscription payment
             invoice_id = metadata.get('invoice_id')
@@ -513,7 +537,7 @@ class UpgradeSubscriptionAPIView(APIView):
             return Response({'error': str(e)}, status=500)
 
     def _upgrade_active_subscription(self, current_sub, new_package, stripe_sub):
-        """Handle upgrade with payment method awareness"""
+        """Handle upgrade with payment intent for frontend"""
         try:
             price_difference = new_package.price - current_sub.package.price
             print(f"💰 Price difference: ${price_difference}")
@@ -523,9 +547,8 @@ class UpgradeSubscriptionAPIView(APIView):
             has_payment_method = customer.get('invoice_settings', {}).get('default_payment_method') is not None
             
             if not has_payment_method:
-                print("⚠️ No default payment method found - will update subscription only")
-                # Proceed with subscription update but no immediate charge
-                return self._update_subscription_only(current_sub, new_package, stripe_sub)
+                print("⚠️ No default payment method found - creating payment intent")
+                return self._create_upgrade_payment_intent(current_sub, new_package, stripe_sub, price_difference)
 
             # Try to update with immediate charge
             try:
@@ -536,42 +559,64 @@ class UpgradeSubscriptionAPIView(APIView):
                         'price': new_package.stripe_price_id,
                     }],
                     proration_behavior='always_invoice',
+                    expand=['latest_invoice.payment_intent']
                 )
                 
-                # Check if an immediate invoice was created
+                # Check if immediate payment is required
                 latest_invoice = stripe.Invoice.retrieve(updated_sub.latest_invoice)
-                print(f"✅ Immediate invoice created: ${latest_invoice.amount_due/100}")
                 
+                if latest_invoice.amount_due > 0:
+                    # Immediate payment required - get payment intent
+                    if hasattr(latest_invoice, 'payment_intent'):
+                        payment_intent = latest_invoice.payment_intent
+                        print(f"✅ Immediate payment required: ${latest_invoice.amount_due/100}")
+                        
+                        # Update database temporarily
+                        current_sub.package = new_package
+                        current_sub.status = 'incomplete'  # Mark as incomplete until payment
+                        if getattr(updated_sub, "current_period_end", None):
+                            current_sub.current_period_end = datetime.fromtimestamp(updated_sub.current_period_end)
+                        current_sub.save()
+                        
+                        return Response({
+                            'requires_action': True,
+                            'client_secret': payment_intent.client_secret,
+                            'payment_intent_id': payment_intent.id,
+                            'amount_due': latest_invoice.amount_due,
+                            'currency': latest_invoice.currency,
+                            'message': 'Complete payment to finish upgrade',
+                            'subscription_id': current_sub.stripe_subscription_id,
+                        })
+                
+                # No immediate payment required
+                current_sub.package = new_package
+                if getattr(updated_sub, "current_period_end", None):
+                    current_sub.current_period_end = datetime.fromtimestamp(updated_sub.current_period_end)
+                current_sub.save()
+
+                print(f"✅ Subscription updated to ${new_package.price} - no immediate payment")
+
+                return Response({
+                    'message': 'Upgrade successful',
+                    'subscription_id': current_sub.stripe_subscription_id,
+                    'new_package': new_package.name,
+                    'new_price': new_package.price,
+                })
+                    
             except stripe.error.InvalidRequestError as e:
                 if "no attached payment source" in str(e).lower():
-                    print("⚠️ Payment method issue - falling back to simple update")
-                    return self._update_subscription_only(current_sub, new_package, stripe_sub)
+                    print("⚠️ Payment method issue - creating payment intent")
+                    return self._create_upgrade_payment_intent(current_sub, new_package, stripe_sub, price_difference)
                 raise e
-
-            # Update database
-            current_sub.package = new_package
-            if getattr(updated_sub, "current_period_end", None):
-                current_sub.current_period_end = datetime.fromtimestamp(updated_sub.current_period_end)
-            current_sub.save()
-
-            print(f"✅ Subscription updated to ${new_package.price}")
-
-            return Response({
-                'message': 'Upgrade successful with immediate charge',
-                'subscription_id': current_sub.stripe_subscription_id,
-                'new_package': new_package.name,
-                'new_price': new_package.price,
-                'immediate_charge': price_difference,
-                'invoice_status': 'created',
-            })
 
         except Exception as e:
             print(f"❌ Upgrade error: {str(e)}")
             return Response({'error': f'Upgrade failed: {str(e)}'}, status=500)
 
-    def _update_subscription_only(self, current_sub, new_package, stripe_sub):
-        """Update subscription without immediate payment"""
+    def _create_upgrade_payment_intent(self, current_sub, new_package, stripe_sub, price_difference):
+        """Create payment intent for upgrade charge"""
         try:
+            # First update the subscription
             updated_sub = stripe.Subscription.modify(
                 current_sub.stripe_subscription_id,
                 items=[{
@@ -581,41 +626,42 @@ class UpgradeSubscriptionAPIView(APIView):
                 proration_behavior='create_prorations',
             )
 
+            # Create payment intent for the upgrade difference
+            payment_intent = stripe.PaymentIntent.create(
+                amount=int(price_difference * 100),  # Convert to cents
+                currency='usd',
+                customer=stripe_sub.customer,
+                payment_method_types=['card'],
+                metadata={
+                    'user_id': current_sub.user.id,
+                    'upgrade_to': new_package.id,
+                    'subscription_id': current_sub.stripe_subscription_id,
+                    'action': 'upgrade'
+                }
+            )
+
+            # Update database temporarily (will be confirmed via webhook)
             current_sub.package = new_package
+            current_sub.status = 'incomplete'  # Mark as incomplete until payment confirmed
             if getattr(updated_sub, "current_period_end", None):
                 current_sub.current_period_end = datetime.fromtimestamp(updated_sub.current_period_end)
             current_sub.save()
 
-            print(f"✅ Subscription updated to ${new_package.price}")
+            print(f"✅ Created payment intent for upgrade: ${price_difference}")
 
-            # Check upcoming invoice to see future charges
-            try:
-                upcoming = stripe.Invoice.upcoming(
-                    customer=stripe_sub.customer,
-                    subscription=current_sub.stripe_subscription_id
-                )
-                print(f"📅 Next invoice amount: ${upcoming.amount_due/100}")
-                
-                return Response({
-                    'message': 'Upgrade successful - subscription updated',
-                    'subscription_id': current_sub.stripe_subscription_id,
-                    'new_package': new_package.name,
-                    'new_price': new_package.price,
-                    'next_invoice_amount': upcoming.amount_due/100,
-                    'note': 'Subscription updated. Upgrade charge will be included in next billing cycle.',
-                })
-            except:
-                return Response({
-                    'message': 'Upgrade successful - subscription updated',
-                    'subscription_id': current_sub.stripe_subscription_id,
-                    'new_package': new_package.name,
-                    'new_price': new_package.price,
-                    'note': 'Subscription updated to new package.',
-                })
-
+            return Response({
+                'requires_action': True,
+                'client_secret': payment_intent.client_secret,
+                'payment_intent_id': payment_intent.id,
+                'amount_due': price_difference * 100,
+                'currency': 'usd',
+                'message': 'Provide card details to complete upgrade',
+                'subscription_id': current_sub.stripe_subscription_id,
+            })
+            
         except Exception as e:
-            return Response({'error': f'Subscription update failed: {str(e)}'}, status=500)
-    
+            return Response({'error': f'Payment setup failed: {str(e)}'}, status=500)
+
     def _handle_inactive_upgrade(self, user, current_sub, new_package, stripe_sub):
         """Handle upgrade for inactive/canceled subscriptions"""
         try:
