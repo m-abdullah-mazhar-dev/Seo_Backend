@@ -6,5 +6,8 @@ urlpatterns = [
     path('upgrade-subscription/', UpgradeSubscriptionAPIView.as_view(), name='upgrade-subscription'),
     path('get-subscriptions-details/',SubscriptionDetailsAPIView.as_view()),
     path('cancel-subscriptions/',CancelSubscriptionAPIView.as_view()),
-    path('webhook/', stripe_webhook, name='stripe-webhook')
+    path('webhook/', stripe_webhook, name='stripe-webhook'),
+
+
+  
 ]
