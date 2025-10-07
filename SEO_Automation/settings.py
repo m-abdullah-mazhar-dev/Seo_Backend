@@ -403,3 +403,6 @@ TARGET_DOMAIN = os.getenv('TARGET_DOMAIN', 'https://galaxywholesales.com')
 
 SEO_DOMAIN = os.getenv("SEO_DOMAIN", "127.0.0.1:3000")
 TRUCKING_DOMAIN = os.getenv("TRUCKING_DOMAIN", "127.0.0.1:8000")
+
+
+
