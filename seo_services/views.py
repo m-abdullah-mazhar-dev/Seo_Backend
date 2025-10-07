@@ -1575,6 +1575,222 @@ def run_blog_writing(task):
 #         task.save()
 
 
+# def run_seo_optimization(task):
+#     logger = logging.getLogger(__name__)
+#     try:
+#         logger.info(f"🚀 Running SEO optimization task for Task ID {task.id}")
+#         user = task.user
+
+#         onboarding = OnboardingForm.objects.filter(user=user).first()
+#         if not onboarding:
+#             logger.warning("⚠️ No onboarding form found.")
+#             task.status = "failed"
+#             task.save()
+#             return
+        
+#         # Monthly check
+#         current_month = timezone.now().strftime("%Y-%m")
+#         package_limit = onboarding.package.seo_optimization_limit if onboarding.package else 5
+
+#         # if task.month_year != current_month:
+#         #     task.count_this_month = 0
+#         #     task.month_year = current_month
+
+#         completed_this_month = SEOTask.objects.filter(
+#         user=user,
+#         status='completed',
+#         month_year=current_month,
+#         task_type='seo_optimization'
+#     ).count()
+
+#         # Check if limit reached
+#         if completed_this_month >= package_limit:
+#             # Allow processing if we haven't reached exact limit
+#             pages_remaining = package_limit - completed_this_month
+#             logger.warning(f"🚫 Pages_remaining {pages_remaining}, Package limit -- > {package_limit}, Completed_this month {completed_this_month} ")
+#             if pages_remaining <= 0:
+
+#                 logger.warning("🚫 SEO task limit reached for this month.")
+#                 task.status = "skipped"
+#                 task.save()
+#                 return
+
+#         # Get service areas
+#         service_areas = onboarding.service_areas.all()
+#         if not service_areas:
+#             logger.warning("⚠️ No service areas found.")
+#             task.status = "failed"
+#             task.save()
+#             return
+
+#         # Get all services
+#         services = Service.objects.filter(onboarding_form=onboarding)
+#         if not services:
+#             logger.warning("⚠️ No services found.")
+#             task.status = "failed"
+#             task.save()
+#             return
+        
+#         # Get WordPress connection (using the original task's connection)
+#         wp_conn = task.service_page.wordpress_connection if task.service_page else None
+#         if not wp_conn:
+#             logger.warning("⚠️ No WordPress connection found.")
+#             task.status = "failed"
+#             task.save()
+#             return
+
+#         # Process each service and area combination
+#         for service in services:
+#             # Get keywords for this specific service
+#             keywords = list(service.keywords.values_list("keyword", flat=True))
+            
+#             if not keywords:
+#                 logger.warning(f"⚠️ No keywords found for service: {service.service_name}")
+#                 continue
+            
+#             for area in service_areas:
+
+
+#                 # Check if we've reached the monthly limit
+#                 if task.count_this_month >= package_limit:
+#                     logger.warning("🚫 Monthly limit reached, stopping processing.")
+#                     break
+                
+#                 # Generate page URL for this service-area combination
+#                 page_slug = f"{slugify(service.service_name)}-in-{slugify(area.area_name)}"
+#                 page_url = f"{wp_conn.site_url.rstrip('/')}/{page_slug}"
+                
+#                 logger.info(f"🔧 Processing service '{service.service_name}' for area '{area.area_name}'")
+                
+#                 # Check if this page already exists in WordPress
+#                 page_exists = False
+#                 existing_content = ""
+                
+#                 try:
+#                     page_response = requests.get(page_url, timeout=20)
+#                     if page_response.status_code == 200:
+#                         page_exists = True
+#                         existing_content = page_response.text
+#                 except Exception:
+#                     # Page doesn't exist or can't be accessed - that's OK, we'll create it
+#                     page_exists = False
+                
+#                 # Determine which API to use
+#                 if page_exists:
+#                     logger.info(f"page exists {page_url}'")
+#                     # Page exists, use optimization API
+#                     api_url = f"{settings.AI_API_DOMAIN}/optimize_content"
+#                     api_payload = {
+#                         "content": existing_content,
+#                         "keywords": keywords,
+#                         "area": area.area_name
+#                     }
+#                 else:
+#                     # Page doesn't exist, use content generation API
+#                     api_url = f"{settings.AI_API_DOMAIN}/generate_content"
+#                     api_payload = {
+#                         "keywords": keywords,
+#                         "area": area.area_name,
+#                         "type": "service_area"
+#                     }
+                
+#                 # Call the appropriate API
+#                 api_response = requests.post(
+#                     api_url,
+#                     json=api_payload,
+#                     timeout=60
+#                 )
+
+#                 if api_response.status_code != 200:
+#                     logger.error(f"❌ API response error: {api_response.text}")
+#                     continue
+
+#                 optimized_data = api_response.json()
+#                 optimized_content = optimized_data.get("content") or optimized_data.get("optimizedContent")
+                
+#                 if not optimized_content:
+#                     logger.warning("⚠️ No optimized content received.")
+#                     continue
+                
+#                 # Upload to WordPress
+#                 try:
+#                     final_url = upload_service_page_to_wordpress(
+#                         task.service_page,  # Use the original service page for connection info
+#                         optimized_content,
+#                         service_name=service.service_name,
+#                         area_name=area.area_name
+#                     )
+                    
+#                     if final_url:
+#                         # Create a new SEOTask for this service-area combination
+#                         SEOTask.objects.create(
+#                             user=user,
+#                             service_page=task.service_page,  # Reference the original service page
+#                             task_type='seo_optimization',
+#                             optimized_content=optimized_content,
+#                             ai_request_payload=api_payload,
+#                             ai_response_payload=optimized_data,
+#                             wp_page_url=final_url,
+#                             status='completed',
+#                             last_run=timezone.now(),
+#                             next_run=timezone.now() + timedelta(
+#                                 days=onboarding.package.interval if onboarding.package else 7
+#                             ),
+#                             count_this_month=1,
+#                             month_year=current_month,
+#                             is_active=True,
+#                         )
+                        
+#                         task.count_this_month += 1
+#                         logger.info(f"✅ Created/optimized page for {service.service_name} in {area.area_name}: {final_url}")
+#                     else:
+#                         logger.error(f"❌ Failed to upload page for {service.service_name} in {area.area_name}")
+#                 except Exception as e:
+#                     logger.exception(f"❌ WordPress upload failed: {str(e)}")
+        
+#         # Update original task status
+#         task.status = "completed"
+#         task.last_run = timezone.now()
+#         task.month_year = current_month
+#         task.save()
+
+#         logger.info(f"✅ SEO Optimization Task {task.id} completed.")
+
+#         # Create next scheduling task (only if we didn't reach the limit)
+#         interval_days = onboarding.package.interval if onboarding.package else 7
+#         new_next_run = timezone.now() + timedelta(days=interval_days)
+#         if task.count_this_month < package_limit:
+#             SEOTask.objects.create(
+#                 user=user,
+#                 service_page=task.service_page,
+#                 task_type='seo_optimization',
+#                 next_run=new_next_run,
+#                 status='pending',
+#                 count_this_month=task.count_this_month,
+#                 month_year=current_month,
+#                 is_active=True,
+#             )
+#             logger.info("✅ Created next SEO scheduling task.")
+#         else:
+#             SEOTask.objects.create(
+#                 user=user,
+#                 service_page=task.service_page,
+#                 task_type='seo_optimization',
+#                 next_run=None,
+#                 status='pending',
+#                 count_this_month=0,
+#                 month_year=current_month,
+#                 is_active=True,
+#             )
+#             logger.info("⏸️ Limit reached, next SEO task paused for this month.")
+
+#     except Exception as e:
+#         logger.exception(f"❌ Exception in SEO Optimization task: {str(e)}")
+#         task.status = "failed"
+#         task.ai_response_payload = {"error": str(e)}
+#         task.save()
+
+
 def run_seo_optimization(task):
     logger = logging.getLogger(__name__)
     try:
@@ -1592,16 +1808,12 @@ def run_seo_optimization(task):
         current_month = timezone.now().strftime("%Y-%m")
         package_limit = onboarding.package.seo_optimization_limit if onboarding.package else 5
 
-        # if task.month_year != current_month:
-        #     task.count_this_month = 0
-        #     task.month_year = current_month
-
         completed_this_month = SEOTask.objects.filter(
-        user=user,
-        status='completed',
-        month_year=current_month,
-        task_type='seo_optimization'
-    ).count()
+            user=user,
+            status='completed',
+            month_year=current_month,
+            task_type='seo_optimization'
+        ).count()
 
         # Check if limit reached
         if completed_this_month >= package_limit:
@@ -1609,16 +1821,15 @@ def run_seo_optimization(task):
             pages_remaining = package_limit - completed_this_month
             logger.warning(f"🚫 Pages_remaining {pages_remaining}, Package limit -- > {package_limit}, Completed_this month {completed_this_month} ")
             if pages_remaining <= 0:
-
                 logger.warning("🚫 SEO task limit reached for this month.")
                 task.status = "skipped"
                 task.save()
                 return
 
-        # Get service areas
-        service_areas = onboarding.service_areas.all()
-        if not service_areas:
-            logger.warning("⚠️ No service areas found.")
+        # Get business locations instead of service areas
+        business_locations = BusinessLocation.objects.filter(onboarding_form=onboarding)
+        if not business_locations:
+            logger.warning("⚠️ No business locations found.")
             task.status = "failed"
             task.save()
             return
@@ -1639,7 +1850,7 @@ def run_seo_optimization(task):
             task.save()
             return
 
-        # Process each service and area combination
+        # Process each service and business location combination
         for service in services:
             # Get keywords for this specific service
             keywords = list(service.keywords.values_list("keyword", flat=True))
@@ -1648,103 +1859,117 @@ def run_seo_optimization(task):
                 logger.warning(f"⚠️ No keywords found for service: {service.service_name}")
                 continue
             
-            for area in service_areas:
-                # Check if we've reached the monthly limit
-                if task.count_this_month >= package_limit:
-                    logger.warning("🚫 Monthly limit reached, stopping processing.")
-                    break
+            for location in business_locations:
+                # Extract service areas from business_service_areas JSON field
+                business_service_areas = location.business_service_areas or []
                 
-                # Generate page URL for this service-area combination
-                page_slug = f"{slugify(service.service_name)}-in-{slugify(area.area_name)}"
-                page_url = f"{wp_conn.site_url.rstrip('/')}/{page_slug}"
-                
-                logger.info(f"🔧 Processing service '{service.service_name}' for area '{area.area_name}'")
-                
-                # Check if this page already exists in WordPress
-                page_exists = False
-                existing_content = ""
-                
-                try:
-                    page_response = requests.get(page_url, timeout=20)
-                    if page_response.status_code == 200:
-                        page_exists = True
-                        existing_content = page_response.text
-                except Exception:
-                    # Page doesn't exist or can't be accessed - that's OK, we'll create it
-                    page_exists = False
-                
-                # Determine which API to use
-                if page_exists:
-                    logger.info(f"page exists {page_url}'")
-                    # Page exists, use optimization API
-                    api_url = f"{settings.AI_API_DOMAIN}/optimize_content"
-                    api_payload = {
-                        "content": existing_content,
-                        "keywords": keywords,
-                        "area": area.area_name
-                    }
-                else:
-                    # Page doesn't exist, use content generation API
-                    api_url = f"{settings.AI_API_DOMAIN}/generate_content"
-                    api_payload = {
-                        "keywords": keywords,
-                        "area": area.area_name,
-                        "type": "service_area"
-                    }
-                
-                # Call the appropriate API
-                api_response = requests.post(
-                    api_url,
-                    json=api_payload,
-                    timeout=60
-                )
-
-                if api_response.status_code != 200:
-                    logger.error(f"❌ API response error: {api_response.text}")
-                    continue
-
-                optimized_data = api_response.json()
-                optimized_content = optimized_data.get("content") or optimized_data.get("optimizedContent")
-                
-                if not optimized_content:
-                    logger.warning("⚠️ No optimized content received.")
+                if not business_service_areas:
+                    logger.warning(f"⚠️ No business service areas found for location: {location.location_name}")
                     continue
                 
-                # Upload to WordPress
-                try:
-                    final_url = upload_service_page_to_wordpress(
-                        task.service_page,  # Use the original service page for connection info
-                        optimized_content,
-                        service_name=service.service_name,
-                        area_name=area.area_name
-                    )
+                # Process each service area within the business location
+                for service_area in business_service_areas:
+                    area_name = service_area.get('name', '').strip()
+                    if not area_name:
+                        logger.warning(f"⚠️ Invalid service area name in location: {location.location_name}")
+                        continue
+
+                    # Check if we've reached the monthly limit
+                    if task.count_this_month >= package_limit:
+                        logger.warning("🚫 Monthly limit reached, stopping processing.")
+                        break
                     
-                    if final_url:
-                        # Create a new SEOTask for this service-area combination
-                        SEOTask.objects.create(
-                            user=user,
-                            service_page=task.service_page,  # Reference the original service page
-                            task_type='seo_optimization',
-                            optimized_content=optimized_content,
-                            ai_request_payload=api_payload,
-                            ai_response_payload=optimized_data,
-                            wp_page_url=final_url,
-                            status='completed',
-                            last_run=timezone.now(),
-                            next_run=timezone.now() + timedelta(
-                                days=onboarding.package.interval if onboarding.package else 7
-                            ),
-                            count_this_month=1,
-                            month_year=current_month,
-                            is_active=True,
+                    # Generate page URL for this service-area combination
+                    page_slug = f"{slugify(service.service_name)}-in-{slugify(area_name)}"
+                    page_url = f"{wp_conn.site_url.rstrip('/')}/{page_slug}"
+                    
+                    logger.info(f"🔧 Processing service '{service.service_name}' for area '{area_name}' in location '{location.location_name}'")
+                    
+                    # Check if this page already exists in WordPress
+                    page_exists = False
+                    existing_content = ""
+                    
+                    try:
+                        page_response = requests.get(page_url, timeout=20)
+                        if page_response.status_code == 200:
+                            page_exists = True
+                            existing_content = page_response.text
+                    except Exception:
+                        # Page doesn't exist or can't be accessed - that's OK, we'll create it
+                        page_exists = False
+                    
+                    # Determine which API to use
+                    if page_exists:
+                        logger.info(f"page exists {page_url}'")
+                        # Page exists, use optimization API
+                        api_url = f"{settings.AI_API_DOMAIN}/optimize_content"
+                        api_payload = {
+                            "content": existing_content,
+                            "keywords": keywords,
+                            "area": area_name
+                        }
+                    else:
+                        # Page doesn't exist, use content generation API
+                        api_url = f"{settings.AI_API_DOMAIN}/generate_content"
+                        api_payload = {
+                            "keywords": keywords,
+                            "area": area_name,
+                            "type": "service_area"
+                        }
+                    
+                    # Call the appropriate API
+                    api_response = requests.post(
+                        api_url,
+                        json=api_payload,
+                        timeout=60
+                    )
+
+                    if api_response.status_code != 200:
+                        logger.error(f"❌ API response error: {api_response.text}")
+                        continue
+
+                    optimized_data = api_response.json()
+                    optimized_content = optimized_data.get("content") or optimized_data.get("optimizedContent")
+                    
+                    if not optimized_content:
+                        logger.warning("⚠️ No optimized content received.")
+                        continue
+                    
+                    # Upload to WordPress
+                    try:
+                        final_url = upload_service_page_to_wordpress(
+                            task.service_page,  # Use the original service page for connection info
+                            optimized_content,
+                            service_name=service.service_name,
+                            area_name=area_name
                         )
                         
-                        task.count_this_month += 1
-                        logger.info(f"✅ Created/optimized page for {service.service_name} in {area.area_name}: {final_url}")
-                    else:
-                        logger.error(f"❌ Failed to upload page for {service.service_name} in {area.area_name}")
-                except Exception as e:
-                    logger.exception(f"❌ WordPress upload failed: {str(e)}")
+                        if final_url:
+                            # Create a new SEOTask for this service-area combination
+                            SEOTask.objects.create(
+                                user=user,
+                                service_page=task.service_page,  # Reference the original service page
+                                task_type='seo_optimization',
+                                optimized_content=optimized_content,
+                                ai_request_payload=api_payload,
+                                ai_response_payload=optimized_data,
+                                wp_page_url=final_url,
+                                status='completed',
+                                last_run=timezone.now(),
+                                next_run=timezone.now() + timedelta(
+                                    days=onboarding.package.interval if onboarding.package else 7
+                                ),
+                                count_this_month=1,
+                                month_year=current_month,
+                                is_active=True,
+                            )
+                            
+                            task.count_this_month += 1
+                            logger.info(f"✅ Created/optimized page for {service.service_name} in {area_name}: {final_url}")
+                        else:
+                            logger.error(f"❌ Failed to upload page for {service.service_name} in {area_name}")
+                    except Exception as e:
+                        logger.exception(f"❌ WordPress upload failed: {str(e)}")
         
         # Update original task status
         task.status = "completed"
@@ -1787,6 +2012,8 @@ def run_seo_optimization(task):
         task.status = "failed"
         task.ai_response_payload = {"error": str(e)}
         task.save()
+
+
 
 # def run_keyword_optimization(task):
 #     logger = logging.getLogger(__name__)

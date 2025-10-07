@@ -51,32 +51,169 @@ def get_or_create_category(wp_conn, slug, name=None, description=""):
 import re
 
 
+# def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
+#     wp_conn = wp_conn
+
+#     # Prefer AI request payload if available
+#     if api_payload:
+#         route = api_payload.get("route", "OTR")
+#         position = api_payload.get("position", "Driver")
+#         equipment = api_payload.get("hauling", "General Freight")
+#         pay_structure = api_payload.get("pay_structure", "Pay Not Specified")
+#         pay_value = api_payload.get("pay_type", "N/A")
+#     else:
+#         # Fallback to job_form if payload missing
+#         route = "OTR"
+#         position = "Company Driver"
+#         equipment = job_form.hauling_equipment or "General Freight"
+#         if job_form.cpm:
+#             pay_structure = f"{job_form.cpm} CPM"
+#             pay_value = f"${job_form.cpm}/mile"
+#         elif job_form.driver_percentage:
+#             pay_structure = f"{job_form.driver_percentage}% of load"
+#             pay_value = f"{job_form.driver_percentage}%"
+#         else:
+#             pay_structure = "Pay Not Specified"
+#             pay_value = "N/A"
+    
+#     title = f"{route.upper()} {position} – {equipment} – {pay_structure} – {pay_value}"
+#     map_html = generate_map_html(api_payload)
+
+#     # POST-PROCESSING: Clean up the HTML content for local routes
+#     hiring_area = api_payload.get("hiring_area", {})
+#     route_type = hiring_area.get("type", "").lower()
+
+#     if route_type == "local":
+#         html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
+#     elif route_type == "otr":
+#         html_content = html_content.replace('States:', '')
+
+#     # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
+#     cost_structure = api_payload.get("cost_structure")
+#     if cost_structure:
+#         cost_html = f"""
+#         <h2>{cost_structure['title']}</h2>
+#         """
+        
+#         # Add service fee info
+#         if cost_structure.get("service_fee"):
+#             cost_html += f"<p><strong>{cost_structure['service_fee']} COMPANY SERVICE FEE INCLUDES:</strong></p>"
+#             if cost_structure.get("service_fee_includes"):
+#                 cost_html += "<ul>"
+#                 for item in cost_structure["service_fee_includes"]:
+#                     cost_html += f"<li>{item}</li>"
+#                 cost_html += "</ul>"
+        
+#         # Add weekly expenses
+#         if cost_structure.get("weekly_expenses"):
+#             cost_html += "<p><strong>WEEKLY EXPENSES:</strong></p><ul>"
+#             for expense in cost_structure["weekly_expenses"]:
+#                 cost_html += f"<li>{expense}</li>"
+#             cost_html += "</ul>"
+        
+#         # Insert cost structure after DRIVER BENEFITS section
+#         benefits_pattern = "DRIVER BENEFITS:"
+#         benefits_index = html_content.find(benefits_pattern)
+        
+#         if benefits_index != -1:
+#             # Find the end of the DRIVER BENEFITS section
+#             import re
+#             next_section_match = re.search(r'<br>[A-Z\s]+:', html_content[benefits_index:])
+            
+#             if next_section_match:
+#                 insert_index = benefits_index + next_section_match.start()
+#                 html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#             else:
+#                 ul_end_pattern = "</ul>"
+#                 ul_end_index = html_content.find(ul_end_pattern, benefits_index)
+                
+#                 if ul_end_index != -1:
+#                     insert_index = ul_end_index + len(ul_end_pattern)
+#                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#                 else:
+#                     insert_index = benefits_index + len(benefits_pattern)
+#                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#         else:
+#             html_content += cost_html
+
+#     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
+
+#     slug = slugify(title)
+#     post_data = {
+#         "title": title,
+#         "slug": slug,
+#         "content": f"<div>{html_content}</div>{map_html}",
+#         "status": "publish",
+#         "categories": [category_id], 
+#     }
+
+#     headers = {
+#         'Authorization': f'Basic {wp_conn.access_token}',
+#         'Content-Type': 'application/json',
+#     }
+
+#     # Determine the API endpoint based on whether we're creating or updating
+#     if page_id:
+#         # Update existing post
+#         endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{page_id}"
+#         response = requests.put(endpoint, headers=headers, json=post_data)
+#     else:
+#         # Create new post
+#         endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts"
+#         response = requests.post(endpoint, headers=headers, json=post_data)
+
+#     if response.status_code not in [200, 201]:
+#         raise Exception(f"WordPress {'update' if page_id else 'upload'} failed: {response.text}")
+    
+#     response_data = response.json()
+#     page_url = response_data.get('link')  # This is the published URL
+#     post_id = response_data.get('id')
+
+#     # Store the WordPress post ID for future updates
+#     if job_template and not job_template.wp_page_id and post_id:
+#         job_template.wp_page_id = post_id
+#         job_template.save()
+
+#     logger.info(f"✅ Job Post {'updated' if page_id else 'uploaded'} to WordPress. URL: {page_url}")
+
+#     return page_url
+
 def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
     wp_conn = wp_conn
 
-    # Prefer AI request payload if available
-    if api_payload:
-        route = api_payload.get("route", "OTR")
-        position = api_payload.get("position", "Driver")
-        equipment = api_payload.get("hauling", "General Freight")
-        pay_structure = api_payload.get("pay_structure", "Pay Not Specified")
-        pay_value = api_payload.get("pay_type", "N/A")
-    else:
-        # Fallback to job_form if payload missing
-        route = "OTR"
-        position = "Company Driver"
-        equipment = job_form.hauling_equipment or "General Freight"
-        if job_form.cpm:
-            pay_structure = f"{job_form.cpm} CPM"
-            pay_value = f"${job_form.cpm}/mile"
-        elif job_form.driver_percentage:
-            pay_structure = f"{job_form.driver_percentage}% of load"
-            pay_value = f"{job_form.driver_percentage}%"
-        else:
-            pay_structure = "Pay Not Specified"
-            pay_value = "N/A"
+    # BUILD TITLE DIRECTLY FROM JOB FORM ONLY (the only change needed)
+    route = getattr(job_form, 'route', '')
+    position = getattr(job_form, 'position', '')
+    equipment = getattr(job_form, 'hauling_equipment', '')
     
-    title = f"{route.upper()} {position} – {equipment} – {pay_structure} – {pay_value}"
+    # Format the components
+    route_display = route.upper() if route else "OTR"
+    position_display = position.replace('_', ' ').title() if position else "Driver"
+    equipment_display = equipment.title() if equipment else "General Freight"
+    
+    # Determine pay information from form data
+    if job_form.cpm:
+        pay_display = f"{job_form.cpm} CPM"
+    elif job_form.driver_percentage:
+        pay_display = f"{job_form.driver_percentage}% of Load"
+    elif job_form.drivers_weekly_earning:
+        pay_display = f"${job_form.drivers_weekly_earning}/week"
+    else:
+        pay_display = "Pay Not Specified"
+    
+    # Build the title from form data
+    title_components = [
+        route_display,
+        position_display, 
+        equipment_display,
+        pay_display
+    ]
+    
+    # Remove any empty components and join with dashes
+    title_components = [comp for comp in title_components if comp and comp.strip()]
+    title = " – ".join(title_components)
+
+    # REST OF THE FUNCTION REMAINS EXACTLY THE SAME AS ORIGINAL
     map_html = generate_map_html(api_payload)
 
     # POST-PROCESSING: Clean up the HTML content for local routes
@@ -179,8 +316,74 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, p
     return page_url
 
 
-
-
+def fix_html_content_issues(html_content, job_form, api_payload):
+    """Fix common issues in the generated HTML content"""
+    
+    # Fix percentage display in cost structure
+    if "250.00% COMPANY SERVICE FEE" in html_content:
+        html_content = html_content.replace("250.00% COMPANY SERVICE FEE", "$250.00 COMPANY SERVICE FEE")
+    
+    # Fix truck fleet information
+    truck_make_year = getattr(job_form, 'truck_make_year', '')
+    if "FLEET INCLUDES 2020" in html_content and truck_make_year:
+        html_content = html_content.replace("FLEET INCLUDES 2020", f"FLEET INCLUDES {truck_make_year}")
+    
+    # Fix governed speed
+    governed_speed = getattr(job_form, 'truck_governed_speed', '')
+    if "TRUCKS GOVERNED AT 70" in html_content and governed_speed:
+        html_content = html_content.replace("TRUCKS GOVERNED AT 70", f"TRUCKS GOVERNED AT {governed_speed} MPH")
+    
+    # Fix referral bonus formatting
+    if "REFERRAL BONUS – 500" in html_content:
+        referral_bonus = getattr(job_form, 'referral_bonus_amount', '')
+        if referral_bonus:
+            html_content = html_content.replace("REFERRAL BONUS – 500", f"REFERRAL BONUS – ${referral_bonus}")
+        else:
+            html_content = html_content.replace("REFERRAL BONUS – 500", "REFERRAL BONUS AVAILABLE")
+    
+    # Fix home time formatting
+    home_time_list = getattr(job_form, 'home_time', [])
+    if home_time_list and "HOME TIME:" in html_content:
+        home_time_html = "HOME TIME:<br>"
+        for item in home_time_list:
+            home_time_html += f"● {item}<br>"
+        # Replace the entire HOME TIME section
+        import re
+        home_time_pattern = r'HOME TIME:.*?(?=<br>[A-Z]|</div>|$)'
+        html_content = re.sub(home_time_pattern, home_time_html.strip(), html_content, flags=re.DOTALL)
+    
+    # Fix equipment section to show all equipment
+    equipment_benefits = []
+    if getattr(job_form, 'equip_fridge', False):
+        equipment_benefits.append("FRIDGES")
+    if getattr(job_form, 'equip_inverter', False):
+        equipment_benefits.append("INVERTERS")
+    if getattr(job_form, 'equip_microwave', False):
+        equipment_benefits.append("MICROWAVES")
+    if getattr(job_form, 'equip_led', False):
+        equipment_benefits.append("LED LIGHTING")
+    if getattr(job_form, 'equip_apu', False):
+        equipment_benefits.append("APU")
+    
+    if equipment_benefits and "EQUIPMENT:" in html_content:
+        equipment_html = "EQUIPMENT:<br>"
+        for item in equipment_benefits:
+            equipment_html += f"● {item}<br>"
+        # Replace the entire EQUIPMENT section
+        equipment_pattern = r'EQUIPMENT:.*?(?=<br>[A-Z]|</div>|$)'
+        html_content = re.sub(equipment_pattern, equipment_html.strip(), html_content, flags=re.DOTALL)
+    
+    # Fix company info section
+    company_name = getattr(job_form, 'company_name', '')
+    if "📢 Barlow and Marks Co" in html_content and company_name:
+        html_content = html_content.replace("📢 Barlow and Marks Co", f"📢 {company_name}")
+    
+    # Fix MC/DOT number display
+    mc_dot = getattr(job_form, 'mc_dot_number', '')
+    if "🆔 915 /" in html_content and mc_dot:
+        html_content = html_content.replace("🆔 915 /", f"🆔 {mc_dot}")
+    
+    return html_content
 
 # from .views import map_job_form_to_api_payload
 
@@ -492,7 +695,9 @@ def map_cost_structure(job_form):
     # --- Owner Operator ---
     if position == "owner operator":
         cost_section["title"] = "Owner-Operator Cost Breakdown"
-        cost_section["service_fee"] = f"{job_form.company_service_fee}%"
+        # cost_section["service_fee"] = f"{job_form.company_service_fee}%"
+        if job_form.company_service_fee:
+            cost_section["service_fee"] = f"${job_form.company_service_fee}"
 
         if job_form.trailer_rent:
             cost_section["weekly_expenses"].append(f"TRAILER RENT – ${job_form.trailer_rent}/WEEK")
@@ -521,7 +726,9 @@ def map_cost_structure(job_form):
     # --- Lease-to-Rent ---
     elif position == "lease-to-rent":
         cost_section["title"] = "Lease-To-Rent Cost Breakdown"
-        cost_section["service_fee"] = f"{job_form.company_service_fee}%"
+        # cost_section["service_fee"] = f"{job_form.company_service_fee}%"
+        if job_form.company_service_fee:
+            cost_section["service_fee"] = f"${job_form.company_service_fee}"
 
         if job_form.truck_lease_weekly:
             cost_section["weekly_expenses"].append(f"TRUCK LEASE – ${job_form.truck_lease_weekly}/WEEK")
@@ -553,7 +760,9 @@ def map_cost_structure(job_form):
     # --- Lease-to-Purchase ---
     elif position == "lease-to-purchase":
         cost_section["title"] = "Lease-To-Purchase Cost Breakdown"
-        cost_section["service_fee"] = f"{job_form.company_service_fee}%"
+        # cost_section["service_fee"] = f"{job_form.company_service_fee}%"
+        if job_form.company_service_fee:
+            cost_section["service_fee"] = f"${job_form.company_service_fee}"
 
         if job_form.truck_lease_weekly:
             cost_section["weekly_expenses"].append(f"TRUCK LEASE – ${job_form.truck_lease_weekly}/WEEK")
