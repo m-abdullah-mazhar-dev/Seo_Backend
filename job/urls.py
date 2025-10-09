@@ -56,5 +56,16 @@ urlpatterns = [
     path('jobs/analytics/sync/', JobContentAnalyticsView.as_view(), name='sync-job-analytics'),
     path('jobs/performance/', JobPerformanceDashboardView.as_view(), name='job-performance-dashboard'),
     
-
 ]
+
+
+from django.urls import path
+from .views import *
+
+urlpatterns = [
+    path('api/customers/upload-csv/', upload_customers_csv, name='upload-csv'),
+    path('api/customers/<int:file_id>/', get_customer_file_data, name='get-file-data'),
+    path('api/customers/', get_all_customers, name='get-all-customers'),  
+]
+
+

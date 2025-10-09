@@ -339,3 +339,20 @@ class FeedbackFormResponseSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['feedback', 'created_at']
     
+
+
+
+from rest_framework import serializers
+from .models import Customer, CustomerFile
+
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = ['id', 'name', 'email', 'contact', 'created_at']
+
+class CustomerFileSerializer(serializers.ModelSerializer):
+    customers = CustomerSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = CustomerFile
+        fields = ['id', 'file_name', 'uploaded_at', 'customers']

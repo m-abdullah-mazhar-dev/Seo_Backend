@@ -1119,3 +1119,112 @@ def delete_wordpress_post(wp_conn, post_id):
     except Exception as e:
         logger.error(f"❌ Error deleting WordPress post {post_id}: {str(e)}")
         return False
+    
+
+
+
+import csv
+import io
+from .models import Customer, CustomerFile
+
+def process_customer_csv(file, user, file_name):
+    """
+    CSV file process karke customers create karta hai with duplicate prevention
+    """
+    try:
+
+        customer_file, created = CustomerFile.objects.get_or_create(
+            user=user,
+            file_name=file_name
+        )
+        
+        # File read karna
+        decoded_file = file.read().decode('utf-8')
+        io_string = io.StringIO(decoded_file)
+        
+        
+        sniffer = csv.Sniffer()
+        sample = decoded_file[:1024]
+        dialect = sniffer.sniff(sample)
+        
+        # Reset file pointer
+        io_string = io.StringIO(decoded_file)
+        reader = csv.DictReader(io_string, dialect=dialect)
+        
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        # Debugging: Check available fields
+        available_fields = reader.fieldnames if reader.fieldnames else []
+        print(f"Available fields in CSV: {available_fields}")
+        
+        for row_num, row in enumerate(reader, start=2):
+            try:
+                # Debug current row
+                print(f"Processing row {row_num}: {row}")
+                
+                # Case-insensitive field matching
+                row_lower = {k.lower().strip(): v for k, v in row.items()}
+                
+                # Get values with different possible field names
+                name = (row_lower.get('name') or row_lower.get('name') or 
+                       row_lower.get('customer name') or row_lower.get('full name') or '').strip()
+                
+                email = (row_lower.get('email') or row_lower.get('email address') or 
+                        row_lower.get('email_id') or row_lower.get('e-mail') or '').strip().lower()
+                
+                contact = (row_lower.get('contact') or row_lower.get('phone') or 
+                          row_lower.get('mobile') or row_lower.get('phone number') or '').strip()
+                
+                # Required fields check 
+                if not name or not email:
+                    errors.append(f"Row {row_num}: Name and Email are required. Got name: '{name}', email: '{email}'")
+                    error_count += 1
+                    continue
+                
+                # Email format check
+                if '@' not in email or '.' not in email:
+                    errors.append(f"Row {row_num}: Invalid email format: {email}")
+                    error_count += 1
+                    continue
+                
+                # Email unique check for this user
+                if Customer.objects.filter(user=user, email=email).exists():
+                    errors.append(f"Row {row_num}: Email {email} already exists in your data")
+                    error_count += 1
+                    continue
+                
+                # Customer create 
+                Customer.objects.create(
+                    user=user,
+                    customer_file=customer_file,
+                    name=name,
+                    email=email,
+                    contact=contact
+                )
+                success_count += 1
+                print(f"Successfully created customer: {name}, {email}")
+                
+            except Exception as e:
+                errors.append(f"Row {row_num}: {str(e)}")
+                error_count += 1
+                print(f"Error in row {row_num}: {str(e)}")
+        
+        action = "created" if created else "updated"
+        
+        return {
+            'success': True,
+            'message': f'File {file_name} {action}. Successfully processed {success_count} customers, {error_count} failed',
+            'file_id': customer_file.id,
+            'success_count': success_count,
+            'error_count': error_count,
+            'errors': errors
+        }
+        
+    except Exception as e:
+        print(f"CSV processing error: {str(e)}")
+        return {
+            'success': False,
+            'message': f'Error processing CSV file: {str(e)}'
+        }

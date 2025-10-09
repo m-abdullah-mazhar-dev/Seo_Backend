@@ -515,3 +515,39 @@ class FeedbackFormResponse(models.Model):
     
     def __str__(self):
         return f"Feedback from {self.feedback.email} - {self.satisfaction_level}"
+    
+
+
+
+
+
+from django.db import models
+from django.conf import settings
+
+class CustomerFile(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    file_name = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.file_name} - {self.user.email}"
+
+class Customer(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    customer_file = models.ForeignKey(
+        CustomerFile, 
+        on_delete=models.CASCADE, 
+        related_name='customers',
+        null=True,  
+        blank=True  
+    )
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+    contact = models.CharField(max_length=15, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['user', 'email']
+    
+    def __str__(self):
+        return self.name

@@ -3328,3 +3328,119 @@ class SalesforceContactCreateAPIView(APIView):
             {"error": "Contact creation not yet implemented for Salesforce"}, 
             status=status.HTTP_501_NOT_IMPLEMENTED
         )
+
+
+
+
+
+
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .models import CustomerFile
+from .serializers import CustomerFileSerializer, CustomerSerializer
+from .utility import process_customer_csv
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_customers_csv(request):
+    
+    try:
+        # Check if file exists in request
+        if 'csv_file' not in request.FILES:
+            return Response({
+                'success': False,
+                'message': 'CSV file is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        csv_file = request.FILES['csv_file']
+        file_name = csv_file.name
+        
+        # Check file extension
+        if not file_name.endswith('.csv'):
+            return Response({
+                'success': False,
+                'message': 'Please upload a CSV file'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        
+        result = process_customer_csv(csv_file, request.user, file_name)
+        
+        if result['success']:
+            return Response(result, status=status.HTTP_201_CREATED)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': 'Server error',
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_customer_file_data(request, file_id):
+    """
+    GET API - Specific File Ka Sara Data Dikhane Ke Liye
+    """
+    try:
+        
+        customer_file = CustomerFile.objects.filter(
+            id=file_id, 
+            user=request.user
+        ).first()
+        
+        if not customer_file:
+            return Response({
+                'success': False,
+                'message': 'File not found or access denied'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = CustomerFileSerializer(customer_file)
+        
+        return Response({
+            'success': True,
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': 'Server error',
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_all_customers(request):
+    """
+    NEW GET API - Logged-in User Ke Saare Customers Ka Data
+    """
+    try:
+        
+        customers = Customer.objects.filter(user=request.user).order_by('-created_at')
+        
+        # Total count
+        total_customers = customers.count()
+        
+        # Serialize data
+        serializer = CustomerSerializer(customers, many=True)
+        
+        return Response({
+            'success': True,
+            'message': f'Found {total_customers} customers',
+            'total_customers': total_customers,
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': 'Server error',
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
