@@ -58,13 +58,14 @@ urlpatterns = [
 
 
 
+
     path('api/customers/upload-csv/', upload_customers_csv, name='upload-csv'),
     path('api/customers/<int:file_id>/', get_customer_file_data, name='get-file-data'),
     path('api/customers/', get_all_customers, name='get-all-customers'),  
+    
 
 
 ]
-
 
 
 
