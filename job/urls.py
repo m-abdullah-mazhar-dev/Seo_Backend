@@ -31,7 +31,7 @@ urlpatterns = [
     
     path('feedback/form/<uuid:token>/', feedback_form_view, name='feedback-form'),
     path('api/feedback/form/<uuid:token>/submit/', submit_feedback_form, name='submit-feedback-form'),
-        path('feedback/already-submitted/', feedback_already_submitted, name='feedback_already_submitted'),
+    path('feedback/already-submitted/', feedback_already_submitted, name='feedback_already_submitted'),
 
     path('feedback/form-responses/', AllFeedbackFormResponsesAPIView.as_view(), name='all-feedback-form-responses'),
     path('feedback/form-responses/<int:response_id>/', FeedbackFormResponseByIdAPIView.as_view(), name='feedback-form-response-by-id'),
@@ -55,17 +55,16 @@ urlpatterns = [
     path('jobs/keywords/sync/', SyncJobKeywordsView.as_view(), name='sync-job-keywords'),
     path('jobs/analytics/sync/', JobContentAnalyticsView.as_view(), name='sync-job-analytics'),
     path('jobs/performance/', JobPerformanceDashboardView.as_view(), name='job-performance-dashboard'),
-    
-]
 
 
-from django.urls import path
-from .views import *
 
-urlpatterns = [
     path('api/customers/upload-csv/', upload_customers_csv, name='upload-csv'),
     path('api/customers/<int:file_id>/', get_customer_file_data, name='get-file-data'),
     path('api/customers/', get_all_customers, name='get-all-customers'),  
+
+
 ]
+
+
 
 

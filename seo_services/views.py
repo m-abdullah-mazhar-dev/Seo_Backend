@@ -2933,6 +2933,144 @@ class MyServiceAreasView(APIView):
         return Response({"success": True, "message": "Service areas retrieved successfully.", "data": serializer.data})
 
 
+
+
+from rest_framework.pagination import PageNumberPagination
+# class MyKeywordsView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def get(self, request):
+#         onboarding = request.user.onboardingform.first()
+#         if not onboarding:
+#             return Response({"success": False, "message": "Onboarding not found.", "data": []})
+
+#         keywords = Keyword.objects.filter(service__onboarding_form=onboarding)
+#         serializer = KeywordSerializer(keywords, many=True)
+#         return Response({"success": True, "message": "Keywords retrieved successfully.", "data": serializer.data})
+
+
+
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def get_keyword_metrics(request):
+#     """
+#     Get raw keyword metrics for dashboard
+#     """
+#     try:
+#         keywords = Keyword.objects.filter(
+#         service__onboarding_form__user=request.user
+#         ).prefetch_related('dataforseo_data')
+        
+#         metrics = []
+#         for keyword in keywords:
+#             data = keyword.dataforseo_data.last()  # since it's a queryset
+#             if data:
+#                 metrics.append({
+#                     'keyword': keyword.keyword,
+#                     'clicks': keyword.clicks,
+#                     'impressions': keyword.impressions,
+#                     'ctr': keyword.ctr,
+#                     'search_volume': data.search_volume,
+#                     'competition': data.competition,
+#                     'cpc': data.cpc,
+#                     'last_updated': data.last_updated
+#                 })
+
+        
+#         return Response({
+#             'metrics': metrics,
+#             'total_keywords': len(metrics)
+#         })
+        
+#     except Exception as e:
+#         logger.error(f"Error getting keyword metrics: {str(e)}")
+#         return Response({
+#             'error': 'Failed to get keyword metrics'
+#         }, status=500)
+
+
+
+
+# # update1
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.core.paginator import Paginator, EmptyPage
+import logging
+
+logger = logging.getLogger(__name__)
+
+class CustomPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+    
+    def get_paginated_response(self, data):
+        # Get the originally requested page number from query params
+        try:
+            requested_page = int(self.request.query_params.get(self.page_query_param, 1))
+        except (TypeError, ValueError):
+            requested_page = 1
+            
+        total_pages = self.page.paginator.num_pages
+        
+        # Calculate next and previous as boolean values
+        has_next = requested_page < total_pages
+        has_previous = requested_page > 1 and requested_page <= total_pages + 1
+            
+        return Response({
+            "success": True,
+            "message": "Keywords retrieved successfully.",
+            "data": data,
+            "pagination": {
+                "count": self.page.paginator.count,
+                "next": has_next,  # Boolean value
+                "previous": has_previous,  # Boolean value
+                "current_page": requested_page,
+                "total_pages": total_pages,
+                "page_size": self.page_size
+            }
+        })
+    
+    def paginate_queryset(self, queryset, request, view=None):
+        """
+        Custom pagination method that returns empty list for invalid pages
+        """
+        self.request = request
+        page_size = self.get_page_size(request)
+        if not page_size:
+            return None
+
+        paginator = self.django_paginator_class(queryset, page_size)
+        page_number = request.query_params.get(self.page_query_param, 1)
+        
+        try:
+            page_number = int(page_number)
+        except (TypeError, ValueError):
+            page_number = 1
+
+        try:
+            self.page = paginator.page(page_number)
+        except EmptyPage:
+            # Create a dummy page object with correct counts
+            class DummyPage:
+                def __init__(self, paginator):
+                    self.paginator = paginator
+                    self.object_list = []
+                    
+            class DummyPaginator:
+                def __init__(self, count, num_pages):
+                    self.count = count
+                    self.num_pages = num_pages
+                    
+            self.page = DummyPage(DummyPaginator(paginator.count, paginator.num_pages))
+            return []
+        
+        return list(self.page)
+
 class MyKeywordsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -2942,24 +3080,53 @@ class MyKeywordsView(APIView):
             return Response({"success": False, "message": "Onboarding not found.", "data": []})
 
         keywords = Keyword.objects.filter(service__onboarding_form=onboarding)
-        serializer = KeywordSerializer(keywords, many=True)
-        return Response({"success": True, "message": "Keywords retrieved successfully.", "data": serializer.data})
+        
+        # Add pagination
+        paginator = CustomPagination()
+        paginated_keywords = paginator.paginate_queryset(keywords, request)
+        serializer = KeywordSerializer(paginated_keywords, many=True)
+        
+        return paginator.get_paginated_response(serializer.data)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_keyword_metrics(request):
     """
-    Get raw keyword metrics for dashboard
+    Get raw keyword metrics for dashboard with pagination
     """
     try:
         keywords = Keyword.objects.filter(
-        service__onboarding_form__user=request.user
+            service__onboarding_form__user=request.user
         ).prefetch_related('dataforseo_data')
         
+        # Get pagination parameters
+        try:
+            page_size = int(request.GET.get('page_size', 10))
+        except (TypeError, ValueError):
+            page_size = 10
+            
+        try:
+            page_number = int(request.GET.get('page', 1))
+        except (TypeError, ValueError):
+            page_number = 1
+        
+        # Create paginator
+        paginator = Paginator(keywords, page_size)
+        total_count = paginator.count
+        total_pages = paginator.num_pages
+        
+        # Get the requested page data
+        try:
+            current_page = paginator.page(page_number)
+            paginated_keywords = current_page.object_list
+        except EmptyPage:
+            # If page is invalid, return empty data
+            paginated_keywords = []
+        
         metrics = []
-        for keyword in keywords:
-            data = keyword.dataforseo_data.last()  # since it's a queryset
+        for keyword in paginated_keywords:
+            data = keyword.dataforseo_data.last()
             if data:
                 metrics.append({
                     'keyword': keyword.keyword,
@@ -2972,10 +3139,21 @@ def get_keyword_metrics(request):
                     'last_updated': data.last_updated
                 })
 
-        
+        # Calculate next and previous as boolean values
+        has_next = page_number < total_pages
+        has_previous = page_number > 1 and page_number <= total_pages + 1
+
         return Response({
             'metrics': metrics,
-            'total_keywords': len(metrics)
+            'total_keywords': len(metrics),
+            'pagination': {
+                'count': total_count,
+                'next': has_next,  # Boolean value
+                'previous': has_previous,  # Boolean value
+                'current_page': page_number,
+                'total_pages': total_pages,
+                'page_size': page_size
+            }
         })
         
     except Exception as e:
@@ -2983,6 +3161,10 @@ def get_keyword_metrics(request):
         return Response({
             'error': 'Failed to get keyword metrics'
         }, status=500)
+
+
+
+
 
 class MyBlogsView(APIView):
     permission_classes = [IsAuthenticated]

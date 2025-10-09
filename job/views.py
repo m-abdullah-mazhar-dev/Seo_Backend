@@ -3332,20 +3332,99 @@ class SalesforceContactCreateAPIView(APIView):
 
 
 
-
-
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .models import CustomerFile
-from .serializers import CustomerFileSerializer, CustomerSerializer
+from rest_framework.pagination import PageNumberPagination
+from django.core.paginator import Paginator, EmptyPage
+from .models import Customer, CustomerFile
+from .serializers import CustomerSerializer, CustomerFileSerializer
 from .utility import process_customer_csv
+
+
+
+
+
+# Custom Pagination Class - Boolean values ke saath
+class CustomerPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+    
+    def get_paginated_response(self, data, message="Data retrieved successfully."):
+        
+        try:
+            requested_page = int(self.request.query_params.get(self.page_query_param, 1))
+        except (TypeError, ValueError):
+            requested_page = 1
+            
+        total_pages = self.page.paginator.num_pages
+        
+        
+        has_next = requested_page < total_pages
+        has_previous = requested_page > 1 and requested_page <= total_pages + 1
+            
+        return Response({
+            "success": True,
+            "message": message,
+            "data": data,  
+            "pagination": {
+                "count": self.page.paginator.count,  # Total records count
+                "next": has_next,  # Boolean value - true/false
+                "previous": has_previous,  # Boolean value - true/false
+                "current_page": requested_page,
+                "total_pages": total_pages,
+                "page_size": self.page_size
+            }
+        })
+    
+    def paginate_queryset(self, queryset, request, view=None):
+        """
+        Custom pagination method that returns empty list for invalid pages
+        BUT maintains correct pagination info
+        """
+        self.request = request
+        page_size = self.get_page_size(request)
+        if not page_size:
+            return None
+
+        paginator = Paginator(queryset, page_size)
+        page_number = request.query_params.get(self.page_query_param, 1)
+        
+        try:
+            page_number = int(page_number)
+        except (TypeError, ValueError):
+            page_number = 1
+
+        try:
+            self.page = paginator.page(page_number)
+        except EmptyPage:
+            
+            class DummyPage:
+                def __init__(self, paginator, page_number):
+                    self.paginator = paginator
+                    self.object_list = []
+                   
+                    self.number = page_number
+                    
+            class DummyPaginator:
+                def __init__(self, count, num_pages):
+                    self.count = count
+                    self.num_pages = num_pages
+                    
+            self.page = DummyPage(DummyPaginator(paginator.count, paginator.num_pages), page_number)
+            return []
+        
+        return list(self.page)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_customers_csv(request):
-    
+    """
+    POST API - CSV File Upload Karne Ke Liye
+    """
     try:
         # Check if file exists in request
         if 'csv_file' not in request.FILES:
@@ -3364,7 +3443,7 @@ def upload_customers_csv(request):
                 'message': 'Please upload a CSV file'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        
+        # Process CSV file
         result = process_customer_csv(csv_file, request.user, file_name)
         
         if result['success']:
@@ -3383,7 +3462,7 @@ def upload_customers_csv(request):
 @permission_classes([IsAuthenticated])
 def get_customer_file_data(request, file_id):
     """
-    GET API - Specific File Ka Sara Data Dikhane Ke Liye
+    GET API - Specific File Ka Sara Data Dikhane Ke Liye WITH BOOLEAN PAGINATION
     """
     try:
         
@@ -3398,12 +3477,18 @@ def get_customer_file_data(request, file_id):
                 'message': 'File not found or access denied'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = CustomerFileSerializer(customer_file)
+        # Customers with pagination
+        customers = customer_file.customers.all().order_by('-created_at')
         
-        return Response({
-            'success': True,
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
+        # Apply pagination with boolean values
+        paginator = CustomerPagination()
+        paginated_customers = paginator.paginate_queryset(customers, request)
+        serializer = CustomerSerializer(paginated_customers, many=True)
+        
+        return paginator.get_paginated_response(
+            serializer.data, 
+            f"File data retrieved successfully. Found {len(customers)} customers in {customer_file.file_name}"
+        )
         
     except Exception as e:
         return Response({
@@ -3412,31 +3497,25 @@ def get_customer_file_data(request, file_id):
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_all_customers(request):
     """
-    NEW GET API - Logged-in User Ke Saare Customers Ka Data
+    GET API - Logged-in User Ke Saare Customers Ka Data with BOOLEAN PAGINATION
     """
     try:
-        
+       
         customers = Customer.objects.filter(user=request.user).order_by('-created_at')
         
-        # Total count
-        total_customers = customers.count()
+        # Apply pagination with boolean values
+        paginator = CustomerPagination()
+        paginated_customers = paginator.paginate_queryset(customers, request)
+        serializer = CustomerSerializer(paginated_customers, many=True)
         
-        # Serialize data
-        serializer = CustomerSerializer(customers, many=True)
-        
-        return Response({
-            'success': True,
-            'message': f'Found {total_customers} customers',
-            'total_customers': total_customers,
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
+        return paginator.get_paginated_response(
+            serializer.data, 
+            f"Found {len(customers)} customers"
+        )
         
     except Exception as e:
         return Response({
