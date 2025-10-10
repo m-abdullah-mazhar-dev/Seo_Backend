@@ -80,9 +80,21 @@ def process_due_seo_tasks():
 
         except Exception as e:
             logger.error(f"❌ Failed processing task ID {task.id}: {str(e)}")
-            task.status = 'failed'
-            task.next_run = timezone.now() + timedelta(minutes=5)
-            task.save(update_fields=['status', 'next_run'])
+            
+            # Increment failure count and update last failure reason
+            task.failure_count += 1
+            task.last_failure_reason = str(e)
+            
+            if task.failure_count >= 3:  # Max 3 retries
+                task.status = 'requires_attention'
+                task.next_run = None  # Stop retrying
+                logger.error(f"🚫 Task {task.id} marked as 'requires_attention' after {task.failure_count} failures")
+            else:
+                task.status = 'failed'
+                task.next_run = timezone.now() + timedelta(minutes=5)
+                logger.warning(f"🔄 Task {task.id} failed {task.failure_count}/3 times. Retrying in 5 minutes")
+            
+            task.save(update_fields=['status', 'next_run', 'failure_count', 'last_failure_reason'])
 
 
 # tasks.py
