@@ -133,6 +133,8 @@ class SEOTask(models.Model):
     is_active = models.BooleanField(default=True)
     count_this_month = models.IntegerField(default=0)
     month_year = models.CharField(max_length=7, default=default_month_year)
+    failure_count = models.IntegerField(default=0)
+    last_failure_reason = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
