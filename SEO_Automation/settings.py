@@ -254,12 +254,12 @@ AI_API_DOMAIN = "https://aiapi.appseospider.com"
 from django.conf import settings
 print(settings.CORS_ALLOW_METHODS)
 # # Celery
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+# CELERY_BROKER_URL = 'redis://localhost:6379/0'
+# CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 
 
-# CELERY_BROKER_URL = 'redis://:your_strong_password@127.0.0.1:6379/0'
-# CELERY_RESULT_BACKEND = 'redis://:your_strong_password@127.0.0.1:6379/0'
+CELERY_BROKER_URL = 'redis://:your_strong_password@127.0.0.1:6379/0'
+CELERY_RESULT_BACKEND = 'redis://:your_strong_password@127.0.0.1:6379/0'
 
 
 
