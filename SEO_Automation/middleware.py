@@ -21,12 +21,13 @@ class ServiceTypeMiddleware:
 
         if settings.SEO_DOMAIN in referer or settings.SEO_DOMAIN in origin:
             service_type = "seo"
-            logger.info("Set the seo")
+            logger.info("set the seo")
         elif settings.TRUCKING_DOMAIN in referer or settings.TRUCKING_DOMAIN in origin:
             service_type = "trucking"
-            logger.info("Set the seo")
+            logger.info("Set the trucking")
         else:
             service_type = "seo"  # default fallback
+            logger.info("set the seo from else")
 
         set_current_service(service_type)
         request.service_type = service_type
