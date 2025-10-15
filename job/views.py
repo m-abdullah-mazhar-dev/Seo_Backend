@@ -299,11 +299,11 @@ class CreateJobOnboardingFormAPIView(APIView):
 
             # Background Task Creation
             run_job_template_generation(job_form)
-            try:
-                create_initial_job_tasks(user, job_form)
-                print("Task created successfully")
-            except Exception as e:
-                return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
+            # try:
+            #     create_initial_job_tasks(user, job_form)
+            #     print("Task created successfully")
+            # except Exception as e:
+            #     return Response({"error": f"Failed to Create Job blog: {str(e)}"}, status=500)
 
             return Response({
                 "message": "Onboarding form created successfully",
@@ -2029,13 +2029,13 @@ def map_job_form_to_api_payload(job_form):
     if job_form.cpm:
         pay_structure = "CPM"
         pay_value = job_form.cpm
-        weekly_miles_min = job_form.drivers_weekly_miles
-        weekly_miles_max = job_form.drivers_weekly_miles
+        weekly_miles_min = job_form.weekly_miles_min or "2600"
+        weekly_miles_max = job_form.weekly_miles_max or "3000"
     elif job_form.driver_percentage:
         pay_structure = "% of Gross"
         pay_value = job_form.driver_percentage
-        manual_earnings_min = job_form.drivers_weekly_earning
-        manual_earnings_max = job_form.drivers_weekly_earning
+        manual_earnings_min = job_form.manual_earnings_min or "4000"
+        manual_earnings_max = job_form.manual_earnings_max or "5000"
     elif job_form.drivers_weekly_earning:
         pay_structure = "Fixed Weekly"
         pay_value = job_form.drivers_weekly_earning
@@ -2052,24 +2052,41 @@ def map_job_form_to_api_payload(job_form):
     }
     cdl_experience = cdl_experience_map.get(job_form.cdl_experience_required, "New Grads")
 
-    # Map home time to AI API format
+    # UPDATED HOME TIME MAPPING:
+    home_time_mapping = {
+        "HOME DAILY": "Home Every Day",
+        "HOME EVERY DAY": "Home Every Day", 
+        "HOME EVERY OTHER DAY": "Home Every Other Day",
+        "HOME WEEKLY": "1 Week OTR - 1–2 Days Off",
+        "HOME WEEKENDS": "2 Weeks OTR = 2–3 Days Off", 
+        "HOME EVERY 2-3 WEEKS": "3 Weeks OTR = 3–4 Days Off",
+        "HOME EVERY 3-4 WEEKS": "4 Weeks OTR = 4–5 Days Off"
+    }
+
     home_time_selections = []
     for home_time_item in job_form.home_time:
-        home_time_item_upper = home_time_item.upper()
-        if "DAILY" in home_time_item_upper or "EVERY DAY" in home_time_item_upper:
-            home_time_selections.append("Home Every Day")
-        elif "OTHER DAY" in home_time_item_upper:
-            home_time_selections.append("Home Every Other Day")
-        elif "WEEKENDS" in home_time_item_upper:
-            home_time_selections.append("2 Weeks OTR = 2–3 Days Off")
-        elif "WEEKLY" in home_time_item_upper:
-            home_time_selections.append("1 Week OTR - 1–2 Days Off")
-        elif "2-3 WEEKS" in home_time_item_upper or "EVERY 2-3 WEEKS" in home_time_item_upper:
-            home_time_selections.append("3 Weeks OTR = 3–4 Days Off")
-        elif "3-4 WEEKS" in home_time_item_upper:
-            home_time_selections.append("4 Weeks OTR = 4–5 Days Off")
-        else:
-            home_time_selections.append(home_time_item)
+        home_time_item_upper = home_time_item.upper().strip()
+        mapped = home_time_mapping.get(home_time_item_upper, home_time_item)
+        home_time_selections.append(mapped)
+    
+    # # Map home time to AI API format
+    # home_time_selections = []
+    # for home_time_item in job_form.home_time:
+    #     home_time_item_upper = home_time_item.upper()
+    #     if "DAILY" in home_time_item_upper or "EVERY DAY" in home_time_item_upper:
+    #         home_time_selections.append("Home Every Day")
+    #     elif "OTHER DAY" in home_time_item_upper:
+    #         home_time_selections.append("Home Every Other Day")
+    #     elif "WEEKENDS" in home_time_item_upper:
+    #         home_time_selections.append("2 Weeks OTR = 2–3 Days Off")
+    #     elif "WEEKLY" in home_time_item_upper:
+    #         home_time_selections.append("1 Week OTR - 1–2 Days Off")
+    #     elif "2-3 WEEKS" in home_time_item_upper or "EVERY 2-3 WEEKS" in home_time_item_upper:
+    #         home_time_selections.append("3 Weeks OTR = 3–4 Days Off")
+    #     elif "3-4 WEEKS" in home_time_item_upper:
+    #         home_time_selections.append("4 Weeks OTR = 4–5 Days Off")
+    #     else:
+    #         home_time_selections.append(home_time_item)
 
     # DRIVER REQUIREMENTS MAPPING (MISSING)
     driver_requirements = []
@@ -2143,15 +2160,19 @@ def map_job_form_to_api_payload(job_form):
     if job_form.referral_bonus or job_form.main_referral_bonus:
         bonus_amount = f" - {job_form.referral_bonus_amount}" if job_form.referral_bonus_amount else ""
         driver_benefits.append(f"REFERRAL BONUS{bonus_amount}")
-    
-    # ADDITIONAL BENEFITS (MISSING)
-    if job_form.fuel_card:
-        fuel_type = f" - {job_form.fuel_card_type}" if job_form.fuel_card_type else ""
-        driver_benefits.append(f"FUEL CARD PROVIDED{fuel_type}")
-    
-    if job_form.offer_cash_advances:
-        advance_amount = f" - ${job_form.cash_advance_amount}" if job_form.cash_advance_amount else ""
-        driver_benefits.append(f"CASH ADVANCES AVAILABLE{advance_amount}")
+
+    if job_form.fuel_card and job_form.fuel_card_type:
+        driver_benefits.append(f"FUEL CARD PROVIDED – {job_form.fuel_card_type.upper()}")
+
+    if job_form.offer_cash_advances and job_form.cash_advance_amount:
+        driver_benefits.append(f"CASH ADVANCES AVAILABLE – ${job_form.cash_advance_amount}")
+
+    if job_form.detention_layover_pay:
+        driver_benefits.append(f"DETENTION/LAYOVER PAY – ${job_form.detention_layover_pay}")
+
+    if job_form.allow_pets_pessenger:
+        driver_benefits.append("PET/PASSENGER POLICY")
+
 
     # Travel and extra
     travel = []
@@ -2256,7 +2277,7 @@ def map_job_form_to_api_payload(job_form):
         "contact_phone": job_form.contact_phone,
         "contact_email": job_form.hiring_email,
         "website": job_form.company_website or "",
-        "terminal_address": job_form.terminal,
+        "terminal_address": f"{job_form.terminal}",
         "mc_number": job_form.mc_dot_number,
         "dot_number": job_form.mc_dot_number,
         
@@ -2415,34 +2436,44 @@ def map_job_form_to_api_payload(job_form):
 #         # task.ai_response_payload = {"error": str(e)}
 #         # task.save()
 
-
 def clean_generated_html(html_content, job_form):
     """
-    Clean up the AI-generated HTML by removing empty sections and fixing formatting
+    Clean up the AI-generated HTML - FIXED VERSION
     """
     import re
     
-    # Remove empty EXTRA section
-    html_content = re.sub(r'EXTRA:\s*[\r\n]*\s*[\r\n]*', '', html_content)
+    print(html_content, "html content giving to the clean function directly after ai response ")
     
-    # Remove empty TRAVEL section if it only has placeholder text
+    # FIX 1: PRESERVE EXTRA section - only remove if truly empty
+    # Check if EXTRA: exists but has no content after it
+    if 'EXTRA:' in html_content:
+        # Use more specific pattern to only remove EMPTY EXTRA sections
+        html_content = re.sub(r'EXTRA:\s*[\r\n]+\s*[\r\n]+(?!●)', '', html_content)
+    
+    
+    # FIX 2: Remove duplicate "HIRING FROM" format
+        # ✅ Remove only a standalone "HIRING FROM:" line (not "NOW HIRING FROM")
+    html_content = re.sub(
+        r'(?im)^[ \t]*HIRING\s+FROM:\s*(?:\r?\n)+',
+        '',
+        html_content
+    )
+    
+    # Remove empty TRAVEL section
     html_content = re.sub(r'TRAVEL:\s*[\r\n]*\s*● HELLO DESCRIPTION\s*[\r\n]*', '', html_content)
     
     # Remove localhost website
     html_content = re.sub(r'🌐 http://localhost:3000/onboarding/step2\s*[\r\n]*', '', html_content)
     
-    # FIX MC/DOT DISPLAY - Remove duplicate numbers like "915 / 915"
+    # Fix MC/DOT duplicates
     html_content = re.sub(r'🆔 (\d+) / \1\s*[\r\n]*', r'🆔 \1\n', html_content)
-    
-    # Also handle cases where there might be spaces or different formatting
     html_content = re.sub(r'🆔 (\d+)\s*/\s*\1\s*[\r\n]*', r'🆔 \1\n', html_content)
     
-    # Clean up any double line breaks caused by removals
+    # Clean up double line breaks
     html_content = re.sub(r'\n\s*\n', '\n\n', html_content)
     
     logger.info(f"🔧 Cleaned HTML content")
     return html_content
-
 # test
 # def run_job_template_generation(job_task_or_form, is_update=False):
 #     try:
