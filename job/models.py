@@ -17,13 +17,17 @@ class JobOnboardingForm(models.Model):
     company_name = models.CharField(max_length=255)
     company_website = models.URLField(blank=True, null=True)
     company_address = models.TextField()
+    company_type = models.CharField(max_length=100,null=True,blank=True)
     drivers_weekly_earning = models.CharField(max_length=100,null=True,blank=True)
     drivers_weekly_miles = models.CharField(max_length=100,null=True,blank=True)
     cpm = models.CharField(max_length=100,null=True,blank=True)
     driver_percentage = models.CharField(max_length=100, help_text="If applicable", null=True, blank=True)
     truck_make_year = models.CharField(max_length=255)
     hauling_equipment = models.TextField()
-
+    years_in_operation = models.CharField(max_length=50, null=True,blank=True)
+    has_safety = models.CharField(max_length=50, null=True,blank=True)
+    safety_contact = models.CharField(max_length=100,null=True,blank=True)
+    funding_statement = models.CharField(max_length=100,null=True,blank=True)
 
 
     wordpress_post_id = models.IntegerField(null=True, blank=True)
@@ -163,6 +167,9 @@ class JobOnboardingForm(models.Model):
         max_digits=8, decimal_places=2, null=True, blank=True
     )
     insurance_liability_cargo = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True
+    )
+    phd_fee = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True
     )
     ifta_fee = models.DecimalField(

@@ -1837,6 +1837,12 @@ def map_job_form_to_api_payload(job_form):
         equipment.append("LED LIGHTING")
     if job_form.equip_apu:
         equipment.append("APU")
+    if job_form.equip_disc_brakes:
+        equipment.append("DISC Brakes")
+    if job_form.equip_no_inward_cam:
+        equipment.append("No Inward Facing Camera")
+    if job_form.equip_partial_equipment:
+        equipment.append("Partial Equipment")
     
     # Determine transmission type
     transmission = []
