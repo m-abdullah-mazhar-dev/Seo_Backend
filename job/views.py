@@ -1792,40 +1792,310 @@ def run_job_blog_writing(task):
     
 
 
-def map_job_form_to_api_payload(job_form):
-    """Map JobOnboardingForm data to the API request payload structure"""
+# def map_job_form_to_api_payload(job_form):
+#     """Map JobOnboardingForm data to the API request payload structure"""
     
-    # Determine position type
-    # position = "Company Driver"  # Default assumption
+#     # Determine position type
+#     # position = "Company Driver"  # Default assumption
+#     position = job_form.position
+#     route = job_form.route
+
+#     # if not position:
+#     #     position = 
+#     #     # Set default based on other fields or logic
+#     #     if job_form.position_1099 or job_form.position_w2:
+#     #         position = "Company Driver"
+#     #   # Generic fallback
+    
+#     pay_type = ""
+#     # Determine pay type
+#     if job_form.position_1099 and job_form.position_w2:
+#         pay_type = "1099 or W2"
+#     elif job_form.position_1099:
+#         pay_type = "1099"
+#     elif job_form.position_w2:
+#         pay_type = "W2"
+#     else:
+#         position = "Driver" 
+    
+#     # Determine pay structure
+#     pay_structure = ""
+#     if job_form.cpm:
+#         pay_structure = f"{job_form.cpm} CPM"
+#     elif job_form.driver_percentage:
+#         pay_structure = f"{job_form.driver_percentage}% of load"
+    
+#     # Determine equipment list
+#     equipment = []
+#     if job_form.equip_fridge or job_form.main_equip_fridge:
+#         equipment.append("FRIDGES")
+#     if job_form.equip_microwave or job_form.main_equip_microwave:
+#         equipment.append("MICROWAVES")
+#     if job_form.equip_inverter or job_form.main_equip_inverter:
+#         equipment.append("INVERTERS")
+#     if job_form.equip_led or job_form.main_equip_led:
+#         equipment.append("LED LIGHTING")
+#     if job_form.equip_apu:
+#         equipment.append("APU")
+#     if job_form.equip_disc_brakes:
+#         equipment.append("DISC Brakes")
+#     if job_form.equip_no_inward_cam:
+#         equipment.append("No Inward Facing Camera")
+#     if job_form.equip_partial_equipment:
+#         equipment.append("Partial Equipment")
+    
+#     # Determine transmission type
+#     transmission = []
+#     if job_form.transmission_automatic or job_form.main_auto_transmission:
+#         transmission.append("AUTOMATIC TRUCKS AVAILABLE")
+#     if job_form.transmission_manual or job_form.main_manual_transmission:
+#         transmission.append("MANUAL TRUCKS AVAILABLE")
+    
+#     # Build driver requirements
+#     driver_requirements = [
+#         "CDL A LICENSE REQUIRED",
+#         f"MIN. {job_form.minimum_hiring_age} YEARS OF AGE",
+#         "Clean Clearinghouse" if job_form.clean_clearinghouse else None,
+#         "Clean Drug Test" if job_form.clean_drug_test else None
+#     ]
+    
+#     # Add experience requirement if specified
+#     if job_form.cdl_experience_required != "3":  # Assuming "3" means 3 months (graduates welcome)
+#         exp_map = {
+#             "3": "3 MONTHS",
+#             "6": "6 MONTHS", 
+#             "12": "1 YEAR",
+#             "18": "1.5 YEARS",
+#             "24": "2 YEARS",
+#             "36": "3+ YEARS"
+#         }
+#         driver_requirements.append(f"MIN. {exp_map.get(job_form.cdl_experience_required, 'EXPERIENCE')} EXPERIENCE")
+#     else:
+#         driver_requirements.append("GRADUATES WELCOME")
+    
+#     # Build driver benefits
+#     driver_benefits = []
+#     if transmission:
+#         driver_benefits.extend(transmission)
+    
+#     if job_form.truck_governed_speed:
+#         driver_benefits.append(f"TRUCKS GOVERNED AT {job_form.truck_governed_speed}")
+    
+#     if job_form.truck_make_year:
+#         driver_benefits.append(f"FLEET INCLUDES {job_form.truck_make_year}")
+    
+#     if job_form.benefit_weekly_deposits or job_form.main_weekly_deposits:
+#         driver_benefits.append("WEEKLY DIRECT DEPOSITS")
+    
+#     if job_form.benefit_dispatch_support or job_form.main_dispatch_support:
+#         driver_benefits.append("24/7 DISPATCH & ROADSIDE ASSISTANCE")
+    
+#     if job_form.main_safety_bonus:
+#         driver_benefits.append("SAFETY BONUS")
+    
+#     if job_form.referral_bonus or job_form.main_referral_bonus:
+#         bonus_amount = f" - {job_form.referral_bonus_amount}" if job_form.referral_bonus_amount else ""
+#         driver_benefits.append(f"REFERRAL BONUS{bonus_amount}")
+    
+#     # Build travel benefits
+#     travel = []
+#     if job_form.travel_provided and job_form.travel_description:
+#         travel.append(job_form.travel_description.upper())
+    
+#     # Build extra information
+#     extra = []
+#     if job_form.escrow_required and job_form.escrow_description:
+#         extra.append(job_form.escrow_description.upper())
+
+#     # Parse hiring areas from primary_running_areas
+#     # hiring_area = {
+#     #     "regions": [],
+#     #     "states": []
+#     # }
+    
+#     # if job_form.primary_running_areas:
+#     #     # Simple parsing - this could be enhanced with more sophisticated logic
+#     #     areas = job_form.primary_running_areas.split(',')
+#     #     for area in areas:
+#     #         area = area.strip()
+#     #         if len(area) == 2 and area.isupper():  # Likely a state code
+#     #             hiring_area["states"].append(area)
+#     #         else:  # Likely a region name
+#     #             hiring_area["regions"].append(area)
+
+#     # if job_form.states:
+#     #     hiring_area["states"].extend(job_form.states)
+
+
+#     # Parse hiring areas from primary_running_areas
+#     hiring_area = {
+#         "regions": [],
+#         "states": [],
+#         "radius": None,   # local ke liye
+#         "type": None      # local / regional / otr
+#     }
+
+#     if job_form.route:  
+#         route_type = job_form.route.lower().strip()
+        
+#         if route_type == "local":
+#             hiring_area["type"] = "local"
+#             # Local case: sirf radius use hogi (map nahi)
+#             hiring_area["radius"] = job_form.radius if hasattr(job_form, "radius") else None
+
+#             hiring_area["regions"] = []
+#             hiring_area["states"] = []
+        
+#         elif route_type == "regional":
+#             hiring_area["type"] = "regional"
+#             if job_form.primary_running_areas:
+#                 areas = job_form.primary_running_areas.split(',')
+#                 for area in areas:
+#                     area = area.strip()
+#                     if len(area) == 2 and area.isupper():  # Likely a state code
+#                         hiring_area["states"].append(area)
+#                     else:  # Likely a region name
+#                         hiring_area["regions"].append(area)
+#             if job_form.states:
+#                 hiring_area["states"].extend(job_form.states)
+        
+#         elif route_type == "otr":
+#             hiring_area["type"] = "otr"
+#             # OTR case: full USA map, koi extra filter nahi
+#             hiring_area["regions"] = ["USA"]
+
+   
+#     print(job_form.mc_dot_number, "------------------------mc dot number ")
+    
+    
+#     # Construct the API payload
+#     payload = {
+#         "position": position,
+#         "route": route,  # Default assumption, could be enhanced
+#         "hauling": job_form.hauling_equipment.upper() if job_form.hauling_equipment else "VAN",
+#         "pay_type": pay_type,
+#         "pay_structure": pay_structure,
+#         "company_name": job_form.company_name,
+#         "contact_phone": job_form.contact_phone,
+#         "contact_email": job_form.hiring_email,
+#         "website": job_form.company_website or "",
+#         "terminal_address": job_form.terminal,
+#         # FIX: Proper MC/DOT formatting
+#         "mc_number": job_form.mc_dot_number,
+#         "dot_number": job_form.mc_dot_number,
+#         # "mc_number": job_form.mc_dot_number.split('/')[0] if '/' in job_form.mc_dot_number else job_form.mc_dot_number,
+#         # "dot_number": job_form.mc_dot_number.split('/')[1] if '/' in job_form.mc_dot_number and len(job_form.mc_dot_number.split('/')) > 1 else "",
+#         "driver_requirements": [req for req in driver_requirements if req],  # Remove empty strings
+#         "home_time": job_form.home_time,  # Default assumption
+#         "driver_benefits": driver_benefits,
+#         "equipment": equipment,
+#         "travel": travel,
+#         "extra": extra,
+#         "hiring_area": hiring_area
+#     }
+  
+
+#     return payload
+
+
+def map_job_form_to_api_payload(job_form):
+    """Map JobOnboardingForm data to the NEW AI API request payload structure"""
+    
     position = job_form.position
     route = job_form.route
 
-    # if not position:
-    #     position = 
-    #     # Set default based on other fields or logic
-    #     if job_form.position_1099 or job_form.position_w2:
-    #         position = "Company Driver"
-    #   # Generic fallback
-    
-    pay_type = ""
     # Determine pay type
-    if job_form.position_1099 and job_form.position_w2:
+    pay_type = ""
+    if job_form.pay_type:
+        pay_type = job_form.pay_type
+    elif job_form.position_1099 and job_form.position_w2:
         pay_type = "1099 or W2"
     elif job_form.position_1099:
         pay_type = "1099"
     elif job_form.position_w2:
         pay_type = "W2"
     else:
-        position = "Driver" 
-    
-    # Determine pay structure
+        position = "Driver"
+
+    # Determine pay structure and value for AI API
     pay_structure = ""
-    if job_form.cpm:
-        pay_structure = f"{job_form.cpm} CPM"
-    elif job_form.driver_percentage:
-        pay_structure = f"{job_form.driver_percentage}% of load"
+    pay_value = None
+    weekly_miles_min = None
+    weekly_miles_max = None
+    weekly_hours = None
+    manual_earnings_min = None
+    manual_earnings_max = None
     
-    # Determine equipment list
+    if job_form.cpm:
+        pay_structure = "CPM"
+        pay_value = job_form.cpm
+        weekly_miles_min = job_form.drivers_weekly_miles
+        weekly_miles_max = job_form.drivers_weekly_miles
+    elif job_form.driver_percentage:
+        pay_structure = "% of Gross"
+        pay_value = job_form.driver_percentage
+        manual_earnings_min = job_form.drivers_weekly_earning
+        manual_earnings_max = job_form.drivers_weekly_earning
+    elif job_form.drivers_weekly_earning:
+        pay_structure = "Fixed Weekly"
+        pay_value = job_form.drivers_weekly_earning
+        weekly_hours = "40"
+
+    # Map CDL experience to AI API format
+    cdl_experience_map = {
+        "3": "New Grads",
+        "6": "6 Months", 
+        "12": "1 Year",
+        "18": "1.5 Years",
+        "24": "2 Years",
+        "36": "3+ Years"
+    }
+    cdl_experience = cdl_experience_map.get(job_form.cdl_experience_required, "New Grads")
+
+    # Map home time to AI API format
+    home_time_selections = []
+    for home_time_item in job_form.home_time:
+        home_time_item_upper = home_time_item.upper()
+        if "DAILY" in home_time_item_upper or "EVERY DAY" in home_time_item_upper:
+            home_time_selections.append("Home Every Day")
+        elif "OTHER DAY" in home_time_item_upper:
+            home_time_selections.append("Home Every Other Day")
+        elif "WEEKENDS" in home_time_item_upper:
+            home_time_selections.append("2 Weeks OTR = 2–3 Days Off")
+        elif "WEEKLY" in home_time_item_upper:
+            home_time_selections.append("1 Week OTR - 1–2 Days Off")
+        elif "2-3 WEEKS" in home_time_item_upper or "EVERY 2-3 WEEKS" in home_time_item_upper:
+            home_time_selections.append("3 Weeks OTR = 3–4 Days Off")
+        elif "3-4 WEEKS" in home_time_item_upper:
+            home_time_selections.append("4 Weeks OTR = 4–5 Days Off")
+        else:
+            home_time_selections.append(home_time_item)
+
+    # DRIVER REQUIREMENTS MAPPING (MISSING)
+    driver_requirements = []
+    driver_requirements.append("CDL A LICENSE REQUIRED")
+    
+    if job_form.minimum_hiring_age:
+        driver_requirements.append(f"MIN. {job_form.minimum_hiring_age} YEARS OF AGE")
+    
+    if job_form.clean_clearinghouse:
+        driver_requirements.append("Clean Clearinghouse")
+    if job_form.clean_drug_test:
+        driver_requirements.append("Clean Drug Test")
+    
+    if job_form.cdl_experience_required != "3":
+        exp_map = {
+            "3": "3 MONTHS", "6": "6 MONTHS", "12": "1 YEAR",
+            "18": "1.5 YEARS", "24": "2 YEARS", "36": "3+ YEARS"
+        }
+        driver_requirements.append(f"MIN. {exp_map.get(job_form.cdl_experience_required, 'EXPERIENCE')} EXPERIENCE")
+    else:
+        driver_requirements.append("GRADUATES WELCOME")
+    
+    if job_form.disqualify_sap_dui_dwi:
+        driver_requirements.append("NO SAP/DUI/DWI")
+
+    # Equipment list
     equipment = []
     if job_form.equip_fridge or job_form.main_equip_fridge:
         equipment.append("FRIDGES")
@@ -1843,38 +2113,15 @@ def map_job_form_to_api_payload(job_form):
         equipment.append("No Inward Facing Camera")
     if job_form.equip_partial_equipment:
         equipment.append("Partial Equipment")
-    
-    # Determine transmission type
+
+    # Build driver benefits
+    driver_benefits = []
     transmission = []
     if job_form.transmission_automatic or job_form.main_auto_transmission:
         transmission.append("AUTOMATIC TRUCKS AVAILABLE")
     if job_form.transmission_manual or job_form.main_manual_transmission:
         transmission.append("MANUAL TRUCKS AVAILABLE")
     
-    # Build driver requirements
-    driver_requirements = [
-        "CDL A LICENSE REQUIRED",
-        f"MIN. {job_form.minimum_hiring_age} YEARS OF AGE",
-        "Clean Clearinghouse" if job_form.clean_clearinghouse else None,
-        "Clean Drug Test" if job_form.clean_drug_test else None
-    ]
-    
-    # Add experience requirement if specified
-    if job_form.cdl_experience_required != "3":  # Assuming "3" means 3 months (graduates welcome)
-        exp_map = {
-            "3": "3 MONTHS",
-            "6": "6 MONTHS", 
-            "12": "1 YEAR",
-            "18": "1.5 YEARS",
-            "24": "2 YEARS",
-            "36": "3+ YEARS"
-        }
-        driver_requirements.append(f"MIN. {exp_map.get(job_form.cdl_experience_required, 'EXPERIENCE')} EXPERIENCE")
-    else:
-        driver_requirements.append("GRADUATES WELCOME")
-    
-    # Build driver benefits
-    driver_benefits = []
     if transmission:
         driver_benefits.extend(transmission)
     
@@ -1897,105 +2144,145 @@ def map_job_form_to_api_payload(job_form):
         bonus_amount = f" - {job_form.referral_bonus_amount}" if job_form.referral_bonus_amount else ""
         driver_benefits.append(f"REFERRAL BONUS{bonus_amount}")
     
-    # Build travel benefits
+    # ADDITIONAL BENEFITS (MISSING)
+    if job_form.fuel_card:
+        fuel_type = f" - {job_form.fuel_card_type}" if job_form.fuel_card_type else ""
+        driver_benefits.append(f"FUEL CARD PROVIDED{fuel_type}")
+    
+    if job_form.offer_cash_advances:
+        advance_amount = f" - ${job_form.cash_advance_amount}" if job_form.cash_advance_amount else ""
+        driver_benefits.append(f"CASH ADVANCES AVAILABLE{advance_amount}")
+
+    # Travel and extra
     travel = []
     if job_form.travel_provided and job_form.travel_description:
         travel.append(job_form.travel_description.upper())
     
-    # Build extra information
     extra = []
     if job_form.escrow_required and job_form.escrow_description:
         extra.append(job_form.escrow_description.upper())
+    if job_form.repair_shop_onsite:
+        extra.append("REPAIR SHOP ON SITE")
+    if job_form.gated_vehicle_parking:
+        extra.append("GATED PARKING LOT FOR PERSONAL VEHICLE")
 
-    # Parse hiring areas from primary_running_areas
-    # hiring_area = {
-    #     "regions": [],
-    #     "states": []
-    # }
-    
-    # if job_form.primary_running_areas:
-    #     # Simple parsing - this could be enhanced with more sophisticated logic
-    #     areas = job_form.primary_running_areas.split(',')
-    #     for area in areas:
-    #         area = area.strip()
-    #         if len(area) == 2 and area.isupper():  # Likely a state code
-    #             hiring_area["states"].append(area)
-    #         else:  # Likely a region name
-    #             hiring_area["regions"].append(area)
-
-    # if job_form.states:
-    #     hiring_area["states"].extend(job_form.states)
-
-
-    # Parse hiring areas from primary_running_areas
-    hiring_area = {
-        "regions": [],
-        "states": [],
-        "radius": None,   # local ke liye
-        "type": None      # local / regional / otr
+    # Hiring area with state abbreviation conversion
+    hiring_states = job_form.states or []
+    state_abbreviations = {
+        "Texas": "TX", "Oklahoma": "OK", "Louisiana": "LA", "Arkansas": "AR",
+        "Illinois": "IL", "Indiana": "IN", "Ohio": "OH", "Michigan": "MI", "Wisconsin": "WI",
+        "Georgia": "GA", "Alabama": "AL", "Tennessee": "TN", "South Carolina": "SC", 
+        "North Carolina": "NC", "Florida": "FL", "Mississippi": "MS", "Missouri": "MO",
+        # Add more as needed
     }
-
-    if job_form.route:  
-        route_type = job_form.route.lower().strip()
-        
-        if route_type == "local":
-            hiring_area["type"] = "local"
-            # Local case: sirf radius use hogi (map nahi)
-            hiring_area["radius"] = job_form.radius if hasattr(job_form, "radius") else None
-
-            hiring_area["regions"] = []
-            hiring_area["states"] = []
-        
-        elif route_type == "regional":
-            hiring_area["type"] = "regional"
-            if job_form.primary_running_areas:
-                areas = job_form.primary_running_areas.split(',')
-                for area in areas:
-                    area = area.strip()
-                    if len(area) == 2 and area.isupper():  # Likely a state code
-                        hiring_area["states"].append(area)
-                    else:  # Likely a region name
-                        hiring_area["regions"].append(area)
-            if job_form.states:
-                hiring_area["states"].extend(job_form.states)
-        
-        elif route_type == "otr":
-            hiring_area["type"] = "otr"
-            # OTR case: full USA map, koi extra filter nahi
-            hiring_area["regions"] = ["USA"]
-
-   
-    print(job_form.mc_dot_number, "------------------------mc dot number ")
     
+    hiring_states_abbr = []
+    for state in hiring_states:
+        if state in state_abbreviations:
+            hiring_states_abbr.append(state_abbreviations[state])
+        else:
+            hiring_states_abbr.append(state)
+
+    city_area = job_form.primary_running_areas
+    hiring_radius = job_form.radius
+
+    # Cost structure fields
+    service_fee_percent = str(job_form.company_service_fee) if job_form.company_service_fee else None
+    service_fee_includes = job_form.service_fee_includes or []
+    truck_lease = str(job_form.truck_lease_weekly) if job_form.truck_lease_weekly else None
+    trailer_rent = str(job_form.trailer_rent) if job_form.trailer_rent else None
+    physical_damage_insurance = str(job_form.insurance_physical_damage) if job_form.insurance_physical_damage else None
+    liability_cargo_insurance = str(job_form.insurance_liability_cargo) if job_form.insurance_liability_cargo else None
+    phd_fee = str(job_form.phd_fee) if job_form.phd_fee else None
+    ifta_fee = str(job_form.ifta_fee) if job_form.ifta_fee else None
     
+    # Tablet data logic
+    tablet_data = None
+    if job_form.driver_provided_tablet:
+        tablet_data = "Driver Provided"
+    elif job_form.tablet_cost and job_form.tablet_cost.lower() != "driver":
+        tablet_data = job_form.tablet_cost
+    
+    # Down payment
+    down_payment = str(job_form.down_payment_amount) if job_form.down_payment and job_form.down_payment_amount else None
+
     # Construct the API payload
     payload = {
+        # Required AI API fields
         "position": position,
-        "route": route,  # Default assumption, could be enhanced
+        "route": route,
         "hauling": job_form.hauling_equipment.upper() if job_form.hauling_equipment else "VAN",
         "pay_type": pay_type,
         "pay_structure": pay_structure,
+        "pay_value": pay_value,
+        
+        # Earnings calculation
+        "weekly_miles_min": weekly_miles_min, 
+        "weekly_miles_max": weekly_miles_max,
+        "weekly_hours": weekly_hours,
+        "manual_earnings_min": manual_earnings_min,
+        "manual_earnings_max": manual_earnings_max,
+        
+        # Driver requirements (ADDED)
+        "cdl_experience": cdl_experience,
+        "min_age": job_form.minimum_hiring_age,
+        "disqualify_sap_dui": job_form.disqualify_sap_dui_dwi,
+        "driver_requirements": [req for req in driver_requirements if req],  # ADDED THIS LINE
+        
+        # Home time
+        "home_time_selections": home_time_selections,
+        
+        # Equipment and benefits
+        "driver_benefits": driver_benefits,
+        "equipment": equipment,
+        "transmission_automatic": job_form.transmission_automatic or job_form.main_auto_transmission,
+        "transmission_manual": job_form.transmission_manual or job_form.main_manual_transmission,
+        "governed_speed": job_form.truck_governed_speed,
+        "truck_make_year": job_form.truck_make_year,
+        "truck_features": equipment,
+        
+        # Travel
+        "provide_travel": job_form.travel_provided,
+        "travel_description": job_form.travel_description,
+        
+        # Extra
+        "escrow_required": job_form.escrow_required,
+        "escrow_details": job_form.escrow_description,
+        "repair_shop_onsite": job_form.repair_shop_onsite,
+        "gated_parking": job_form.gated_vehicle_parking,
+        
+        # Company info
         "company_name": job_form.company_name,
         "contact_phone": job_form.contact_phone,
         "contact_email": job_form.hiring_email,
         "website": job_form.company_website or "",
         "terminal_address": job_form.terminal,
-        # FIX: Proper MC/DOT formatting
         "mc_number": job_form.mc_dot_number,
         "dot_number": job_form.mc_dot_number,
-        # "mc_number": job_form.mc_dot_number.split('/')[0] if '/' in job_form.mc_dot_number else job_form.mc_dot_number,
-        # "dot_number": job_form.mc_dot_number.split('/')[1] if '/' in job_form.mc_dot_number and len(job_form.mc_dot_number.split('/')) > 1 else "",
-        "driver_requirements": [req for req in driver_requirements if req],  # Remove empty strings
-        "home_time": job_form.home_time,  # Default assumption
-        "driver_benefits": driver_benefits,
-        "equipment": equipment,
-        "travel": travel,
-        "extra": extra,
-        "hiring_area": hiring_area
+        
+        # Hiring area (IMPROVED)
+        "hiring_states": hiring_states_abbr,
+        "city_area": city_area,
+        "hiring_radius": hiring_radius,
+        
+        # Cost structure
+        "service_fee_percent": service_fee_percent,
+        "service_fee_includes": service_fee_includes,
+        "truck_lease": truck_lease,
+        "trailer_rent": trailer_rent,
+        "physical_damage_insurance": physical_damage_insurance,
+        "liability_cargo_insurance": liability_cargo_insurance,
+        "phd_fee": phd_fee,
+        "ifta_fee": ifta_fee,
+        "tablet_data": tablet_data,
+        "down_payment": down_payment,
     }
-  
 
+    # Remove None values
+    payload = {k: v for k, v in payload.items() if v is not None}
+    
     return payload
+
 
 # def run_job_template_generation(job_onboardingform):
 #     try:
@@ -2157,6 +2444,121 @@ def clean_generated_html(html_content, job_form):
     return html_content
 
 # test
+# def run_job_template_generation(job_task_or_form, is_update=False):
+#     try:
+#         if isinstance(job_task_or_form, JobTask):
+#             job_onboarding = job_task_or_form.job_onboarding
+#             user = job_task_or_form.user
+#         else:
+#             job_onboarding = job_task_or_form
+#             user = job_onboarding.user
+
+#         if not job_onboarding:
+#             logger.warning("⚠ No job onboarding form found.")
+#             return
+
+#         # For updates, find the existing template instead of creating a new one
+#         if is_update:
+#             job_template = JobTemplate.objects.filter(
+#                 job_onboarding=job_onboarding
+#             ).order_by('-created_at').first()
+            
+#             if not job_template:
+#                 logger.warning("No existing job template found for update.")
+#                 # Fallback to creating a new one if no existing template found
+#                 job_template = JobTemplate.objects.create(
+#                     user=user,
+#                     job_onboarding=job_onboarding,
+#                     status='processing'
+#                 )
+#             else:
+#                 job_template.status = 'processing'
+#         else:
+#             # Create new template for new submissions
+#             job_template = JobTemplate.objects.create(
+#                 user=user,
+#                 job_onboarding=job_onboarding,
+#                 status='processing'
+#             )
+
+#         # Map job form data
+#         api_payload = map_job_form_to_api_payload(job_onboarding)
+#         job_template.ai_request_payload = api_payload
+#         job_template.save()
+        
+#         response = requests.post(
+#             f"{settings.AI_API_DOMAIN}/generate_job_template",
+#             json=api_payload,
+#             timeout=60
+#         )
+        
+#         if response.status_code != 200:
+#             logger.error(f"❌ API error: {response.text}")
+#             job_template.status = 'failed'
+#             job_template.save()
+#             return
+        
+#         data = response.json()
+#         job_template_content = data.get("jobTemplate", "").strip()
+
+#         if not job_template_content:
+#             logger.warning("⚠ Empty job template.")
+#             job_template.status = 'failed'
+#             job_template.save()
+#             return
+        
+#         # Update job template with AI response
+#         job_template.ai_response_payload = data
+#         job_template.generated_content = job_template_content
+
+#         print(job_template_content)
+
+#                 # CLEAN UP THE GENERATED CONTENT - PASS job_onboarding (which is the job_form)
+#                 # CLEAN UP THE GENERATED CONTENT BEFORE PROCESSING
+#         cleaned_content = clean_generated_html(job_template_content, job_onboarding)
+#         job_template.generated_content = cleaned_content
+
+#         if job_onboarding.position and job_onboarding.position.lower() in ["owner operator", "lease-to-rent", "lease-to-purchase"]:
+#             cost_structure = map_cost_structure(job_onboarding)
+#             data["cost_structure"] = cost_structure
+#             logger.info(f"✅ Added cost structure to response: {cost_structure}")
+
+#         # WordPress upload/update
+#         if hasattr(user, 'wordpress_connection'):
+#             html_content = process_job_template_html(cleaned_content)
+            
+#             # For updates, use the existing page ID if available
+#             page_id = job_template.wp_page_id if is_update else None
+#             page_url = upload_job_post_to_wordpress(
+#                 job_onboarding,
+#                 user.wordpress_connection,
+#                 html_content,
+#                 api_payload=data,
+#                 page_id=page_id,  # Pass page_id for updates
+#                 job_template=job_template  # Pass the job template
+#             )
+
+#             if page_url:
+#                 job_template.wp_page_url = page_url
+#                 job_template.status = 'completed'
+#                 job_template.published_date = timezone.now()
+#                 logger.info(f"✅ Job {'updated' if is_update else 'uploaded'} for {job_onboarding.company_name}")
+#             else:
+#                 job_template.status = 'failed'
+        
+#         job_template.save()
+#         return job_template
+
+#     except Exception as e:
+#         logger.exception(f"❌ Error in run_job_template_generation: {str(e)}")
+#         if job_template:
+#             job_template.status = 'failed'
+#             job_template.save()
+#         return None
+
+
+
+# test
 def run_job_template_generation(job_task_or_form, is_update=False):
     try:
         if isinstance(job_task_or_form, JobTask):
@@ -2194,7 +2596,7 @@ def run_job_template_generation(job_task_or_form, is_update=False):
                 status='processing'
             )
 
-        # Map job form data
+        # Map job form data to NEW AI API structure
         api_payload = map_job_form_to_api_payload(job_onboarding)
         job_template.ai_request_payload = api_payload
         job_template.save()
@@ -2223,18 +2625,20 @@ def run_job_template_generation(job_task_or_form, is_update=False):
         # Update job template with AI response
         job_template.ai_response_payload = data
         job_template.generated_content = job_template_content
-
+        print("api response ------------")
         print(job_template_content)
+        print("--------------- ------------")
 
-                # CLEAN UP THE GENERATED CONTENT - PASS job_onboarding (which is the job_form)
-                # CLEAN UP THE GENERATED CONTENT BEFORE PROCESSING
+
+        # CLEAN UP THE GENERATED CONTENT
         cleaned_content = clean_generated_html(job_template_content, job_onboarding)
         job_template.generated_content = cleaned_content
 
-        if job_onboarding.position and job_onboarding.position.lower() in ["owner operator", "lease-to-rent", "lease-to-purchase"]:
-            cost_structure = map_cost_structure(job_onboarding)
-            data["cost_structure"] = cost_structure
-            logger.info(f"✅ Added cost structure to response: {cost_structure}")
+        # REMOVED: Cost structure handling (now handled by AI API)
+        # if job_onboarding.position and job_onboarding.position.lower() in ["owner operator", "lease-to-rent", "lease-to-purchase"]:
+        #     cost_structure = map_cost_structure(job_onboarding)
+        #     data["cost_structure"] = cost_structure
+        #     logger.info(f"✅ Added cost structure to response: {cost_structure}")
 
         # WordPress upload/update
         if hasattr(user, 'wordpress_connection'):
@@ -2246,9 +2650,9 @@ def run_job_template_generation(job_task_or_form, is_update=False):
                 job_onboarding,
                 user.wordpress_connection,
                 html_content,
-                api_payload=data,
-                page_id=page_id,  # Pass page_id for updates
-                job_template=job_template  # Pass the job template
+                api_payload=data,  # Use AI response data
+                page_id=page_id,
+                job_template=job_template
             )
 
             if page_url:
@@ -2268,7 +2672,6 @@ def run_job_template_generation(job_task_or_form, is_update=False):
             job_template.status = 'failed'
             job_template.save()
         return None
-
 
 
 # Update the task creation function to handle template generation

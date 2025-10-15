@@ -186,7 +186,7 @@ class JobOnboardingForm(models.Model):
     truck_lease_weekly = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True
     )
-    down_payment = models.BooleanField(null=True, blank=True)
+    down_payment = models.BooleanField(default=False,null=True, blank=True)
     down_payment_amount = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )

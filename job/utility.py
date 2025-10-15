@@ -178,143 +178,269 @@ import re
 
 #     return page_url
 
-def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
-    wp_conn = wp_conn
+# main function 
+# def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
+#     wp_conn = wp_conn
 
-    # BUILD TITLE DIRECTLY FROM JOB FORM ONLY (the only change needed)
-    route = getattr(job_form, 'route', '')
-    position = getattr(job_form, 'position', '')
-    equipment = getattr(job_form, 'hauling_equipment', '')
+#     # BUILD TITLE DIRECTLY FROM JOB FORM ONLY (the only change needed)
+#     route = getattr(job_form, 'route', '')
+#     position = getattr(job_form, 'position', '')
+#     equipment = getattr(job_form, 'hauling_equipment', '')
     
-    # Format the components
-    route_display = route.upper() if route else "OTR"
-    position_display = position.replace('_', ' ').title() if position else "Driver"
-    equipment_display = equipment.title() if equipment else "General Freight"
+#     # Format the components
+#     route_display = route.upper() if route else "OTR"
+#     position_display = position.replace('_', ' ').title() if position else "Driver"
+#     equipment_display = equipment.title() if equipment else "General Freight"
     
-    # Determine pay information from form data
-    if job_form.cpm:
-        pay_display = f"{job_form.cpm} CPM"
-    elif job_form.driver_percentage:
-        pay_display = f"{job_form.driver_percentage}% of Load"
-    elif job_form.drivers_weekly_earning:
-        pay_display = f"${job_form.drivers_weekly_earning}/week"
-    else:
-        pay_display = "Pay Not Specified"
+#     # Determine pay information from form data
+#     if job_form.cpm:
+#         pay_display = f"{job_form.cpm} CPM"
+#     elif job_form.driver_percentage:
+#         pay_display = f"{job_form.driver_percentage}% of Load"
+#     elif job_form.drivers_weekly_earning:
+#         pay_display = f"${job_form.drivers_weekly_earning}/week"
+#     else:
+#         pay_display = "Pay Not Specified"
     
-    # Build the title from form data
-    title_components = [
-        route_display,
-        position_display, 
-        equipment_display,
-        pay_display
-    ]
+#     # Build the title from form data
+#     title_components = [
+#         route_display,
+#         position_display, 
+#         equipment_display,
+#         pay_display
+#     ]
     
-    # Remove any empty components and join with dashes
-    title_components = [comp for comp in title_components if comp and comp.strip()]
-    title = " – ".join(title_components)
+#     # Remove any empty components and join with dashes
+#     title_components = [comp for comp in title_components if comp and comp.strip()]
+#     title = " – ".join(title_components)
 
-    # REST OF THE FUNCTION REMAINS EXACTLY THE SAME AS ORIGINAL
-    map_html = generate_map_html(api_payload)
+#     # REST OF THE FUNCTION REMAINS EXACTLY THE SAME AS ORIGINAL
+#     map_html = generate_map_html(api_payload)
 
-    # POST-PROCESSING: Clean up the HTML content for local routes
-    hiring_area = api_payload.get("hiring_area", {})
-    route_type = hiring_area.get("type", "").lower()
+#     # POST-PROCESSING: Clean up the HTML content for local routes
+#     hiring_area = api_payload.get("hiring_area", {})
+#     route_type = hiring_area.get("type", "").lower()
 
-    if route_type == "local":
-        html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
-    elif route_type == "otr":
-        html_content = html_content.replace('States:', '')
+#     if route_type == "local":
+#         html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
+#     elif route_type == "otr":
+#         html_content = html_content.replace('States:', '')
 
-    # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
-    cost_structure = api_payload.get("cost_structure")
-    if cost_structure:
-        cost_html = f"""
-        <h2>{cost_structure['title']}</h2>
-        """
+#     # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
+#     cost_structure = api_payload.get("cost_structure")
+#     if cost_structure:
+#         cost_html = f"""
+#         <h2>{cost_structure['title']}</h2>
+#         """
         
-        # Add service fee info
-        if cost_structure.get("service_fee"):
-            cost_html += f"<p><strong>{cost_structure['service_fee']} COMPANY SERVICE FEE INCLUDES:</strong></p>"
-            if cost_structure.get("service_fee_includes"):
-                cost_html += "<ul>"
-                for item in cost_structure["service_fee_includes"]:
-                    cost_html += f"<li>{item}</li>"
-                cost_html += "</ul>"
+#         # Add service fee info
+#         if cost_structure.get("service_fee"):
+#             cost_html += f"<p><strong>{cost_structure['service_fee']} COMPANY SERVICE FEE INCLUDES:</strong></p>"
+#             if cost_structure.get("service_fee_includes"):
+#                 cost_html += "<ul>"
+#                 for item in cost_structure["service_fee_includes"]:
+#                     cost_html += f"<li>{item}</li>"
+#                 cost_html += "</ul>"
         
-        # Add weekly expenses
-        if cost_structure.get("weekly_expenses"):
-            cost_html += "<p><strong>WEEKLY EXPENSES:</strong></p><ul>"
-            for expense in cost_structure["weekly_expenses"]:
-                cost_html += f"<li>{expense}</li>"
-            cost_html += "</ul>"
+#         # Add weekly expenses
+#         if cost_structure.get("weekly_expenses"):
+#             cost_html += "<p><strong>WEEKLY EXPENSES:</strong></p><ul>"
+#             for expense in cost_structure["weekly_expenses"]:
+#                 cost_html += f"<li>{expense}</li>"
+#             cost_html += "</ul>"
         
-        # Insert cost structure after DRIVER BENEFITS section
-        benefits_pattern = "DRIVER BENEFITS:"
-        benefits_index = html_content.find(benefits_pattern)
+#         # Insert cost structure after DRIVER BENEFITS section
+#         benefits_pattern = "DRIVER BENEFITS:"
+#         benefits_index = html_content.find(benefits_pattern)
         
-        if benefits_index != -1:
-            # Find the end of the DRIVER BENEFITS section
-            import re
-            next_section_match = re.search(r'<br>[A-Z\s]+:', html_content[benefits_index:])
+#         if benefits_index != -1:
+#             # Find the end of the DRIVER BENEFITS section
+#             import re
+#             next_section_match = re.search(r'<br>[A-Z\s]+:', html_content[benefits_index:])
             
-            if next_section_match:
-                insert_index = benefits_index + next_section_match.start()
-                html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
-            else:
-                ul_end_pattern = "</ul>"
-                ul_end_index = html_content.find(ul_end_pattern, benefits_index)
+#             if next_section_match:
+#                 insert_index = benefits_index + next_section_match.start()
+#                 html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#             else:
+#                 ul_end_pattern = "</ul>"
+#                 ul_end_index = html_content.find(ul_end_pattern, benefits_index)
                 
-                if ul_end_index != -1:
-                    insert_index = ul_end_index + len(ul_end_pattern)
-                    html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
-                else:
-                    insert_index = benefits_index + len(benefits_pattern)
-                    html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
-        else:
-            html_content += cost_html
+#                 if ul_end_index != -1:
+#                     insert_index = ul_end_index + len(ul_end_pattern)
+#                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#                 else:
+#                     insert_index = benefits_index + len(benefits_pattern)
+#                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#         else:
+#             html_content += cost_html
 
-    category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
+#     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
 
-    slug = slugify(title)
-    post_data = {
-        "title": title,
-        "slug": slug,
-        "content": f"<div>{html_content}</div>{map_html}",
-        "status": "publish",
-        "categories": [category_id], 
-    }
+#     slug = slugify(title)
+#     post_data = {
+#         "title": title,
+#         "slug": slug,
+#         "content": f"<div>{html_content}</div>{map_html}",
+#         "status": "publish",
+#         "categories": [category_id], 
+#     }
 
-    headers = {
-        'Authorization': f'Basic {wp_conn.access_token}',
-        'Content-Type': 'application/json',
-    }
+#     headers = {
+#         'Authorization': f'Basic {wp_conn.access_token}',
+#         'Content-Type': 'application/json',
+#     }
 
-    # Determine the API endpoint based on whether we're creating or updating
-    if page_id:
-        # Update existing post
-        endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{page_id}"
-        response = requests.put(endpoint, headers=headers, json=post_data)
-    else:
-        # Create new post
-        endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts"
-        response = requests.post(endpoint, headers=headers, json=post_data)
+#     # Determine the API endpoint based on whether we're creating or updating
+#     if page_id:
+#         # Update existing post
+#         endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{page_id}"
+#         response = requests.put(endpoint, headers=headers, json=post_data)
+#     else:
+#         # Create new post
+#         endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts"
+#         response = requests.post(endpoint, headers=headers, json=post_data)
 
-    if response.status_code not in [200, 201]:
-        raise Exception(f"WordPress {'update' if page_id else 'upload'} failed: {response.text}")
+#     if response.status_code not in [200, 201]:
+#         raise Exception(f"WordPress {'update' if page_id else 'upload'} failed: {response.text}")
     
-    response_data = response.json()
-    page_url = response_data.get('link')  # This is the published URL
-    post_id = response_data.get('id')
+#     response_data = response.json()
+#     page_url = response_data.get('link')  # This is the published URL
+#     post_id = response_data.get('id')
 
-    # Store the WordPress post ID for future updates
-    if job_template and not job_template.wp_page_id and post_id:
-        job_template.wp_page_id = post_id
-        job_template.save()
+#     # Store the WordPress post ID for future updates
+#     if job_template and not job_template.wp_page_id and post_id:
+#         job_template.wp_page_id = post_id
+#         job_template.save()
 
-    logger.info(f"✅ Job Post {'updated' if page_id else 'uploaded'} to WordPress. URL: {page_url}")
+#     logger.info(f"✅ Job Post {'updated' if page_id else 'uploaded'} to WordPress. URL: {page_url}")
 
-    return page_url
+#     return page_url
 
+def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
+    """
+    Upload or update job post to WordPress with the new AI-generated content
+    """
+    try:
+        wp_conn = wp_conn
+
+        # ==============================
+        # TITLE GENERATION
+        # ==============================
+        
+        # Option 1: Use AI-generated title from response if available
+        if api_payload and isinstance(api_payload, dict) and api_payload.get("job_title"):
+            title = api_payload["job_title"]
+            logger.info(f"✅ Using AI-generated title: {title}")
+        
+        # Option 2: Fallback to our own title generation
+        else:
+            route = getattr(job_form, 'route', '')
+            position = getattr(job_form, 'position', '')
+            equipment = getattr(job_form, 'hauling_equipment', '')
+            
+            # Format the components
+            route_display = route.upper() if route else "OTR"
+            position_display = position.replace('_', ' ').title() if position else "Driver"
+            equipment_display = equipment.title() if equipment else "General Freight"
+            
+            # Determine pay information from form data
+            if job_form.cpm:
+                pay_display = f"{job_form.cpm} CPM"
+            elif job_form.driver_percentage:
+                pay_display = f"{job_form.driver_percentage}% of Load"
+            elif job_form.drivers_weekly_earning:
+                pay_display = f"${job_form.drivers_weekly_earning}/week"
+            else:
+                pay_display = "Pay Not Specified"
+            
+            # Build the title from form data
+            title_components = [
+                route_display,
+                position_display, 
+                equipment_display,
+                pay_display
+            ]
+            
+            # Remove any empty components and join with dashes
+            title_components = [comp for comp in title_components if comp and comp.strip()]
+            title = " – ".join(title_components)
+            logger.info(f"✅ Using fallback title: {title}")
+
+        # ==============================
+        # MAP GENERATION (keep your existing logic)
+        # ==============================
+        map_html = generate_map_html(api_payload)
+
+        # ==============================
+        # CONTENT CLEANUP (keep your existing logic)
+        # ==============================
+        
+        # POST-PROCESSING: Clean up the HTML content for local routes
+        hiring_area = api_payload.get("hiring_area", {})
+        route_type = hiring_area.get("type", "").lower()
+
+        if route_type == "local":
+            html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
+        elif route_type == "otr":
+            html_content = html_content.replace('States:', '')
+
+        # ==============================
+        # REMOVED: Cost structure insertion 
+        # (Now handled by AI API automatically)
+        # ==============================
+
+        # ==============================
+        # WORDPRESS UPLOAD
+        # ==============================
+        category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
+
+        slug = slugify(title)
+        post_data = {
+            "title": title,
+            "slug": slug,
+            "content": f"<div>{html_content}</div>{map_html}",
+            "status": "publish",
+            "categories": [category_id], 
+        }
+
+        headers = {
+            'Authorization': f'Basic {wp_conn.access_token}',
+            'Content-Type': 'application/json',
+        }
+
+        # Determine the API endpoint based on whether we're creating or updating
+        if page_id:
+            # Update existing post
+            endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{page_id}"
+            response = requests.put(endpoint, headers=headers, json=post_data)
+            action = "update"
+        else:
+            # Create new post
+            endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts"
+            response = requests.post(endpoint, headers=headers, json=post_data)
+            action = "upload"
+
+        if response.status_code not in [200, 201]:
+            error_msg = f"WordPress {action} failed: {response.text}"
+            logger.error(f"❌ {error_msg}")
+            raise Exception(error_msg)
+        
+        response_data = response.json()
+        page_url = response_data.get('link')  # This is the published URL
+        post_id = response_data.get('id')
+
+        # Store the WordPress post ID for future updates
+        if job_template and not job_template.wp_page_id and post_id:
+            job_template.wp_page_id = post_id
+            job_template.save()
+
+        logger.info(f"✅ Job Post {action}ed to WordPress. URL: {page_url}")
+
+        return page_url
+
+    except Exception as e:
+        logger.exception(f"❌ Error in upload_job_post_to_wordpress: {str(e)}")
+        return None
 
 def fix_html_content_issues(html_content, job_form, api_payload):
     """Fix common issues in the generated HTML content"""
