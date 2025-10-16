@@ -2436,15 +2436,86 @@ def map_job_form_to_api_payload(job_form):
 #         # task.ai_response_payload = {"error": str(e)}
 #         # task.save()
 
+# def clean_generated_html(html_content, job_form):
+#     """
+#     Clean up the AI-generated HTML - FIXED VERSION
+#     """
+#     import re
+    
+#     print(html_content, "html content giving to the clean function directly after ai response ")
+
+#     # NEW: Remove "HIRING WITHIN A [X] MILE RADIUS OF TERMINAL" (any radius)
+#     html_content = re.sub(
+#         r'HIRING\s+WITHIN\s+A\s+\d+\s+MILE\s+RADIUS\s+OF\s+TERMINAL\s*[\r\n]*',
+#         '',
+#         html_content,
+#         flags=re.IGNORECASE
+#     )
+    
+#         # Alternative: Remove any line that starts with "NOW HIRING FROM:" 
+#     html_content = re.sub(
+#         r'NOW HIRING FROM: [A-Z, ]+\s*[\r\n]*',
+#         '',
+#         html_content,
+#         flags=re.IGNORECASE
+#     )
+
+    
+#     # FIX 1: PRESERVE EXTRA section - only remove if truly empty
+#     # Check if EXTRA: exists but has no content after it
+#     if 'EXTRA:' in html_content:
+#         # Use more specific pattern to only remove EMPTY EXTRA sections
+#         html_content = re.sub(r'EXTRA:\s*[\r\n]+\s*[\r\n]+(?!●)', '', html_content)
+    
+    
+#     # FIX 2: Remove duplicate "HIRING FROM" format
+#         # ✅ Remove only a standalone "HIRING FROM:" line (not "NOW HIRING FROM")
+#     html_content = re.sub(
+#         r'(?im)^[ \t]*HIRING\s+FROM:\s*(?:\r?\n)+',
+#         '',
+#         html_content
+#     )
+    
+#     # Remove empty TRAVEL section
+#     html_content = re.sub(r'TRAVEL:\s*[\r\n]*\s*● HELLO DESCRIPTION\s*[\r\n]*', '', html_content)
+    
+#     # Remove localhost website
+#     html_content = re.sub(r'🌐 http://localhost:3000/onboarding/step2\s*[\r\n]*', '', html_content)
+    
+#     # Fix MC/DOT duplicates
+#     html_content = re.sub(r'🆔 (\d+) / \1\s*[\r\n]*', r'🆔 \1\n', html_content)
+#     html_content = re.sub(r'🆔 (\d+)\s*/\s*\1\s*[\r\n]*', r'🆔 \1\n', html_content)
+    
+#     # Clean up double line breaks
+#     html_content = re.sub(r'\n\s*\n', '\n\n', html_content)
+    
+#     logger.info(f"🔧 Cleaned HTML content")
+#     return html_content
+
 def clean_generated_html(html_content, job_form):
     """
-    Clean up the AI-generated HTML - FIXED VERSION
+    Clean up the AI-generated HTML with proper formatting
     """
     import re
     
     print(html_content, "html content giving to the clean function directly after ai response ")
-
-    # NEW: Remove "HIRING WITHIN A [X] MILE RADIUS OF TERMINAL" (any radius)
+    
+    # Remove hiring sections
+    html_content = re.sub(
+        r'HIRING FROM:\s*[\r\n]+\s*NOW HIRING FROM: [A-Z, ]+\s*[\r\n]+',
+        '',
+        html_content,
+        flags=re.IGNORECASE
+    )
+    
+    html_content = re.sub(
+        r'^NOW HIRING FROM: [A-Z, ]+\s*[\r\n]+(?=[A-Z])',
+        '',
+        html_content,
+        flags=re.IGNORECASE | re.MULTILINE
+    )
+    
+    # Remove "HIRING WITHIN A 50 MILE RADIUS OF TERMINAL"
     html_content = re.sub(
         r'HIRING\s+WITHIN\s+A\s+\d+\s+MILE\s+RADIUS\s+OF\s+TERMINAL\s*[\r\n]*',
         '',
@@ -2452,45 +2523,110 @@ def clean_generated_html(html_content, job_form):
         flags=re.IGNORECASE
     )
     
-        # Alternative: Remove any line that starts with "NOW HIRING FROM:" 
+    # FORMAT HEADINGS
+    # Make main headings bold
     html_content = re.sub(
-        r'NOW HIRING FROM: [A-Z, ]+\s*[\r\n]*',
-        '',
+        r'^(🟡 REGIONAL|🔴 OTR|🟢 LOCAL) Job Description',
+        r'<h2 style="color: #1e40af; margin: 25px 0 15px 0; font-size: 24px; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">\1 Job Description</h2>',
+        html_content,
+        flags=re.IGNORECASE | re.MULTILINE
+    )
+    
+    # Format section headings
+    section_headings = [
+        'POSITION/PAY STRUCTURE:',
+        'DRIVER REQUIREMENTS:', 
+        'HOME TIME:',
+        'DRIVER BENEFITS:',
+        'EQUIPMENT:',
+        'TRAVEL:',
+        'EXTRA:',
+        'LEASE-TO-RENT COST BREAKDOWN:',
+        'OWNER-OPERATOR COST BREAKDOWN:',
+    ]
+    
+    for heading in section_headings:
+        html_content = html_content.replace(
+            heading, 
+            f'<h3 style="color: #374151; margin: 20px 0 12px 0; font-size: 18px; font-weight: bold; background: #f8fafc; padding: 10px 15px; border-radius: 6px; border-left: 4px solid #3b82f6;">{heading}</h3>'
+        )
+    
+    # FIX: COMBINE 15.00% WITH COMPANY SERVICE FEE INCLUDES - PROPER HEADING
+    html_content = re.sub(
+        r'(\d{1,3}\.?\d{0,2}%)(?:\s*[\r\n]+|\s+)*COMPANY\s+SERVICE\s+FEE\s+INCLUDES\s*:',
+        r'<h3 style="color: #374151; margin: 20px 0 12px 0; font-size: 18px; font-weight: bold; background: #f8fafc; padding: 10px 15px; border-radius: 6px; border-left: 4px solid #3b82f6;">\1 COMPANY SERVICE FEE INCLUDES:</h3>',
         html_content,
         flags=re.IGNORECASE
     )
 
     
-    # FIX 1: PRESERVE EXTRA section - only remove if truly empty
-    # Check if EXTRA: exists but has no content after it
+    # Format the earnings line
+    html_content = re.sub(
+        r'💰 (EARN [^<]+)',
+        r'<div style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 15px 20px; border-radius: 8px; margin: 15px 0; text-align: center; font-size: 18px; font-weight: bold; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3);">\1</div>',
+        html_content
+    )
+    
+    # MOVE COMPANY INFO TO THE VERY END
+    company_info_pattern = r'(COMPANY INFO:[^🆔]+🆔 \d+(?: / \d+)?\s*)'
+    company_info_match = re.search(company_info_pattern, html_content, re.DOTALL)
+    
+    if company_info_match:
+        company_info = company_info_match.group(1)
+        
+        # Remove company info from its current position
+        html_content = re.sub(company_info_pattern, '', html_content, flags=re.DOTALL)
+        
+        # Format company info better
+        formatted_company_info = f'''
+        <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 20px; margin: 25px 0;">
+            <h3 style="color: #0369a1; margin: 0 0 15px 0; font-size: 20px; font-weight: bold;">🏢 Company Information</h3>
+            {company_info}
+        </div>
+        '''
+        
+        # Insert company info at the VERY END of the content
+        html_content += formatted_company_info
+    
+    # Format bullet points better
+    html_content = html_content.replace('●', '<span style="color: #3b82f6; font-weight: bold;">●</span>')
+    
+    # Format company info icons better
+    html_content = html_content.replace('📢', '<span style="font-size: 16px;">🏢</span>')
+    html_content = html_content.replace('📞', '<span style="font-size: 16px;">📞</span>')
+    html_content = html_content.replace('📧', '<span style="font-size: 16px;">📧</span>')
+    html_content = html_content.replace('🌐', '<span style="font-size: 16px;">🌐</span>')
+    html_content = html_content.replace('🏢', '<span style="font-size: 16px;">📍</span>')
+    html_content = html_content.replace('🆔', '<span style="font-size: 16px;">🆔</span>')
+    
+    # Keep existing cleaning logic
     if 'EXTRA:' in html_content:
-        # Use more specific pattern to only remove EMPTY EXTRA sections
         html_content = re.sub(r'EXTRA:\s*[\r\n]+\s*[\r\n]+(?!●)', '', html_content)
     
-    
-    # FIX 2: Remove duplicate "HIRING FROM" format
-        # ✅ Remove only a standalone "HIRING FROM:" line (not "NOW HIRING FROM")
     html_content = re.sub(
         r'(?im)^[ \t]*HIRING\s+FROM:\s*(?:\r?\n)+',
         '',
         html_content
     )
     
-    # Remove empty TRAVEL section
     html_content = re.sub(r'TRAVEL:\s*[\r\n]*\s*● HELLO DESCRIPTION\s*[\r\n]*', '', html_content)
-    
-    # Remove localhost website
     html_content = re.sub(r'🌐 http://localhost:3000/onboarding/step2\s*[\r\n]*', '', html_content)
-    
-    # Fix MC/DOT duplicates
     html_content = re.sub(r'🆔 (\d+) / \1\s*[\r\n]*', r'🆔 \1\n', html_content)
     html_content = re.sub(r'🆔 (\d+)\s*/\s*\1\s*[\r\n]*', r'🆔 \1\n', html_content)
     
-    # Clean up double line breaks
+    # Clean up double line breaks but preserve section spacing
     html_content = re.sub(r'\n\s*\n', '\n\n', html_content)
     
-    logger.info(f"🔧 Cleaned HTML content")
+    # Add overall container styling
+    html_content = f'''
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #374151; max-width: 800px; margin: 0 auto;">
+        {html_content}
+    </div>
+    '''
+    
+    logger.info(f"🔧 Cleaned and formatted HTML content")
     return html_content
+
 # test
 # def run_job_template_generation(job_task_or_form, is_update=False):
 #     try:
