@@ -44,6 +44,8 @@ class JobOnboardingForm(models.Model):
     transmission_automatic = models.BooleanField(default=False)
     transmission_manual = models.BooleanField(default=False)
     pay_type = models.CharField(max_length=50,null=True,blank=True)
+    pay_structure = models.CharField(max_length=50,null=True,blank=True)
+    pay_value = models.CharField(max_length=50,null=True,blank=True)
 
     position_1099 = models.BooleanField(default=False)
     position_w2 = models.BooleanField(default=False)

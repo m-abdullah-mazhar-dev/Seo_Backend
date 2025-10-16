@@ -2017,6 +2017,9 @@ def map_job_form_to_api_payload(job_form):
     else:
         position = "Driver"
 
+
+    
+
     # Determine pay structure and value for AI API
     pay_structure = ""
     pay_value = None
@@ -2025,8 +2028,14 @@ def map_job_form_to_api_payload(job_form):
     weekly_hours = None
     manual_earnings_min = None
     manual_earnings_max = None
+
+    if job_form.route == "Local" and job_form.pay_structure:
+        # use frontend-provided pay_structure and pay_value
+        pay_structure = job_form.pay_structure
+        pay_value = job_form.pay_value or "28"  # default hourly rate if not given
+        # weekly_hours = job_form.weekly_hours or "40"
     
-    if job_form.cpm:
+    elif job_form.cpm:
         pay_structure = "CPM"
         pay_value = job_form.cpm
         weekly_miles_min = job_form.weekly_miles_min or "2600"
