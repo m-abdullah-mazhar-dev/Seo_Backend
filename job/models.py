@@ -20,6 +20,13 @@ class JobOnboardingForm(models.Model):
     company_type = models.CharField(max_length=100,null=True,blank=True)
     drivers_weekly_earning = models.CharField(max_length=100,null=True,blank=True)
     drivers_weekly_miles = models.CharField(max_length=100,null=True,blank=True)
+
+    weekly_miles_min = models.CharField(max_length=100, null=True, blank=True, help_text="Minimum weekly miles")
+    weekly_miles_max = models.CharField(max_length=100, null=True, blank=True, help_text="Maximum weekly miles")
+    
+    manual_earnings_min = models.CharField(max_length=100, null=True, blank=True, help_text="Minimum weekly earnings (% of gross)")
+    manual_earnings_max = models.CharField(max_length=100, null=True, blank=True, help_text="Maximum weekly earnings (% of gross)")
+
     cpm = models.CharField(max_length=100,null=True,blank=True)
     driver_percentage = models.CharField(max_length=100, help_text="If applicable", null=True, blank=True)
     truck_make_year = models.CharField(max_length=255)
@@ -186,7 +193,7 @@ class JobOnboardingForm(models.Model):
     truck_lease_weekly = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True
     )
-    down_payment = models.BooleanField(null=True, blank=True)
+    down_payment = models.BooleanField(default=False,null=True, blank=True)
     down_payment_amount = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )

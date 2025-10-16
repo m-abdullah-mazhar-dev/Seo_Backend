@@ -178,143 +178,374 @@ import re
 
 #     return page_url
 
+# main function 
+# def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
+#     wp_conn = wp_conn
+
+#     # BUILD TITLE DIRECTLY FROM JOB FORM ONLY (the only change needed)
+#     route = getattr(job_form, 'route', '')
+#     position = getattr(job_form, 'position', '')
+#     equipment = getattr(job_form, 'hauling_equipment', '')
+    
+#     # Format the components
+#     route_display = route.upper() if route else "OTR"
+#     position_display = position.replace('_', ' ').title() if position else "Driver"
+#     equipment_display = equipment.title() if equipment else "General Freight"
+    
+#     # Determine pay information from form data
+#     if job_form.cpm:
+#         pay_display = f"{job_form.cpm} CPM"
+#     elif job_form.driver_percentage:
+#         pay_display = f"{job_form.driver_percentage}% of Load"
+#     elif job_form.drivers_weekly_earning:
+#         pay_display = f"${job_form.drivers_weekly_earning}/week"
+#     else:
+#         pay_display = "Pay Not Specified"
+    
+#     # Build the title from form data
+#     title_components = [
+#         route_display,
+#         position_display, 
+#         equipment_display,
+#         pay_display
+#     ]
+    
+#     # Remove any empty components and join with dashes
+#     title_components = [comp for comp in title_components if comp and comp.strip()]
+#     title = " – ".join(title_components)
+
+#     # REST OF THE FUNCTION REMAINS EXACTLY THE SAME AS ORIGINAL
+#     map_html = generate_map_html(api_payload)
+
+#     # POST-PROCESSING: Clean up the HTML content for local routes
+#     hiring_area = api_payload.get("hiring_area", {})
+#     route_type = hiring_area.get("type", "").lower()
+
+#     if route_type == "local":
+#         html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
+#     elif route_type == "otr":
+#         html_content = html_content.replace('States:', '')
+
+#     # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
+#     cost_structure = api_payload.get("cost_structure")
+#     if cost_structure:
+#         cost_html = f"""
+#         <h2>{cost_structure['title']}</h2>
+#         """
+        
+#         # Add service fee info
+#         if cost_structure.get("service_fee"):
+#             cost_html += f"<p><strong>{cost_structure['service_fee']} COMPANY SERVICE FEE INCLUDES:</strong></p>"
+#             if cost_structure.get("service_fee_includes"):
+#                 cost_html += "<ul>"
+#                 for item in cost_structure["service_fee_includes"]:
+#                     cost_html += f"<li>{item}</li>"
+#                 cost_html += "</ul>"
+        
+#         # Add weekly expenses
+#         if cost_structure.get("weekly_expenses"):
+#             cost_html += "<p><strong>WEEKLY EXPENSES:</strong></p><ul>"
+#             for expense in cost_structure["weekly_expenses"]:
+#                 cost_html += f"<li>{expense}</li>"
+#             cost_html += "</ul>"
+        
+#         # Insert cost structure after DRIVER BENEFITS section
+#         benefits_pattern = "DRIVER BENEFITS:"
+#         benefits_index = html_content.find(benefits_pattern)
+        
+#         if benefits_index != -1:
+#             # Find the end of the DRIVER BENEFITS section
+#             import re
+#             next_section_match = re.search(r'<br>[A-Z\s]+:', html_content[benefits_index:])
+            
+#             if next_section_match:
+#                 insert_index = benefits_index + next_section_match.start()
+#                 html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#             else:
+#                 ul_end_pattern = "</ul>"
+#                 ul_end_index = html_content.find(ul_end_pattern, benefits_index)
+                
+#                 if ul_end_index != -1:
+#                     insert_index = ul_end_index + len(ul_end_pattern)
+#                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#                 else:
+#                     insert_index = benefits_index + len(benefits_pattern)
+#                     html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+#         else:
+#             html_content += cost_html
+
+#     category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
+
+#     slug = slugify(title)
+#     post_data = {
+#         "title": title,
+#         "slug": slug,
+#         "content": f"<div>{html_content}</div>{map_html}",
+#         "status": "publish",
+#         "categories": [category_id], 
+#     }
+
+#     headers = {
+#         'Authorization': f'Basic {wp_conn.access_token}',
+#         'Content-Type': 'application/json',
+#     }
+
+#     # Determine the API endpoint based on whether we're creating or updating
+#     if page_id:
+#         # Update existing post
+#         endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{page_id}"
+#         response = requests.put(endpoint, headers=headers, json=post_data)
+#     else:
+#         # Create new post
+#         endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts"
+#         response = requests.post(endpoint, headers=headers, json=post_data)
+
+#     if response.status_code not in [200, 201]:
+#         raise Exception(f"WordPress {'update' if page_id else 'upload'} failed: {response.text}")
+    
+#     response_data = response.json()
+#     page_url = response_data.get('link')  # This is the published URL
+#     post_id = response_data.get('id')
+
+#     # Store the WordPress post ID for future updates
+#     if job_template and not job_template.wp_page_id and post_id:
+#         job_template.wp_page_id = post_id
+#         job_template.save()
+
+#     logger.info(f"✅ Job Post {'updated' if page_id else 'uploaded'} to WordPress. URL: {page_url}")
+
+#     return page_url
+
 def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, page_id=None, job_template=None):
-    wp_conn = wp_conn
+    """
+    Upload or update job post to WordPress with the new AI-generated content
+    """
+    try:
+        wp_conn = wp_conn
 
-    # BUILD TITLE DIRECTLY FROM JOB FORM ONLY (the only change needed)
-    route = getattr(job_form, 'route', '')
-    position = getattr(job_form, 'position', '')
-    equipment = getattr(job_form, 'hauling_equipment', '')
-    
-    # Format the components
-    route_display = route.upper() if route else "OTR"
-    position_display = position.replace('_', ' ').title() if position else "Driver"
-    equipment_display = equipment.title() if equipment else "General Freight"
-    
-    # Determine pay information from form data
-    if job_form.cpm:
-        pay_display = f"{job_form.cpm} CPM"
-    elif job_form.driver_percentage:
-        pay_display = f"{job_form.driver_percentage}% of Load"
-    elif job_form.drivers_weekly_earning:
-        pay_display = f"${job_form.drivers_weekly_earning}/week"
-    else:
-        pay_display = "Pay Not Specified"
-    
-    # Build the title from form data
-    title_components = [
-        route_display,
-        position_display, 
-        equipment_display,
-        pay_display
-    ]
-    
-    # Remove any empty components and join with dashes
-    title_components = [comp for comp in title_components if comp and comp.strip()]
-    title = " – ".join(title_components)
 
-    # REST OF THE FUNCTION REMAINS EXACTLY THE SAME AS ORIGINAL
-    map_html = generate_map_html(api_payload)
+        print(f"🔍 === MAP DATA DEBUG ===")
+        print(f"🔍 Job Form Type: {type(job_form)}")
+        print(f"🔍 Job Form Route: {getattr(job_form, 'route', 'NOT FOUND')}")
+        print(f"🔍 Job Form States: {getattr(job_form, 'states', 'NOT FOUND')}")
+        print(f"🔍 Job Form Radius: {getattr(job_form, 'radius', 'NOT FOUND')}")
+        print(f"🔍 API Payload Type: {type(api_payload)}")
+        if api_payload and isinstance(api_payload, dict):
+            print(f"🔍 API Payload Route: {api_payload.get('route')}")
+            print(f"🔍 API Payload States: {api_payload.get('states')}")
+        else:
+            print(f"🔍 API Payload is not a dictionary: {api_payload}")
+        print("🔍 === END DEBUG ===")
 
-    # POST-PROCESSING: Clean up the HTML content for local routes
-    hiring_area = api_payload.get("hiring_area", {})
-    route_type = hiring_area.get("type", "").lower()
+        # ==============================
+        # TITLE GENERATION
+        # ==============================
+        
+        # Option 1: Use AI-generated title from response if available
+        if api_payload and isinstance(api_payload, dict) and api_payload.get("job_title"):
+            title = api_payload["job_title"]
+            logger.info(f"✅ Using AI-generated title: {title}")
+        
+        # Option 2: Fallback to our own title generation
+        else:
+            route = getattr(job_form, 'route', '')
+            position = getattr(job_form, 'position', '')
+            equipment = getattr(job_form, 'hauling_equipment', '')
+            
+            # Format the components
+            route_display = route.upper() if route else "OTR"
+            position_display = position.replace('_', ' ').title() if position else "Driver"
+            equipment_display = equipment.title() if equipment else "General Freight"
+            
+            # Determine pay information from form data
+            if job_form.cpm:
+                pay_display = f"{job_form.cpm} CPM"
+            elif job_form.driver_percentage:
+                pay_display = f"{job_form.driver_percentage}% of Load"
+            elif job_form.drivers_weekly_earning:
+                pay_display = f"${job_form.drivers_weekly_earning}/week"
+            else:
+                pay_display = "Pay Not Specified"
+            
+            # Build the title from form data
+            title_components = [
+                route_display,
+                position_display, 
+                equipment_display,
+                pay_display
+            ]
+            
+            # Remove any empty components and join with dashes
+            title_components = [comp for comp in title_components if comp and comp.strip()]
+            title = " – ".join(title_components)
+            logger.info(f"✅ Using fallback title: {title}")
 
-    if route_type == "local":
-        html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
-    elif route_type == "otr":
-        html_content = html_content.replace('States:', '')
+        # ==============================
+        # MAP GENERATION (keep your existing logic)
+        # ==============================
 
-    # ADD COST STRUCTURE TO HTML CONTENT IF AVAILABLE
-    cost_structure = api_payload.get("cost_structure")
-    if cost_structure:
-        cost_html = f"""
-        <h2>{cost_structure['title']}</h2>
+
+
+        map_html = generate_map_html(job_form, api_payload) 
+
+
+
+        route = getattr(job_form, 'route', '')
+        states = getattr(job_form, 'states', [])
+
+
+        logger.info(f"🗺️ Generated map HTML for {route} route with {len(states)} states")
+
+
+
+
+        # cleaned_content = remove_hiring_section(html_content)
+        cleaned_content = html_content 
+
+        # ==============================
+        # CONTENT CLEANUP (keep your existing logic)
+        # ==============================
+        
+        # POST-PROCESSING: Clean up the HTML content for local routes
+        # hiring_area = api_payload.get("hiring_area", {})
+        # route_type = hiring_area.get("type", "").lower()
+
+        # if route_type == "local":
+        #     html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
+        # elif route_type == "otr":
+        #     html_content = html_content.replace('States:', '')
+
+        category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
+
+        slug = slugify(title)
+
+        
+        full_content = f"""
+        <div class="job-posting" style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            {cleaned_content}
+            {map_html if map_html else '<div class="hiring-area"><h3>📍 Hiring Area</h3><p>Multiple locations available - contact us for specific hiring areas.</p></div>'}
+        </div>
+        
+        <style>
+        .hiring-area {{
+            background: #f8fafc;
+            border-left: 4px solid #3b82f6;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 0 8px 8px 0;
+        }}
+        .hiring-area h3 {{
+            margin: 0 0 12px 0;
+            color: #1e40af;
+            font-size: 1.3em;
+        }}
+        .job-posting h1, .job-posting h2, .job-posting h3 {{
+            color: #1f2937;
+        }}
+        .job-posting ul {{
+            padding-left: 20px;
+        }}
+        .job-posting li {{
+            margin-bottom: 8px;
+        }}
+        </style>
         """
         
-        # Add service fee info
-        if cost_structure.get("service_fee"):
-            cost_html += f"<p><strong>{cost_structure['service_fee']} COMPANY SERVICE FEE INCLUDES:</strong></p>"
-            if cost_structure.get("service_fee_includes"):
-                cost_html += "<ul>"
-                for item in cost_structure["service_fee_includes"]:
-                    cost_html += f"<li>{item}</li>"
-                cost_html += "</ul>"
+   
         
-        # Add weekly expenses
-        if cost_structure.get("weekly_expenses"):
-            cost_html += "<p><strong>WEEKLY EXPENSES:</strong></p><ul>"
-            for expense in cost_structure["weekly_expenses"]:
-                cost_html += f"<li>{expense}</li>"
-            cost_html += "</ul>"
-        
-        # Insert cost structure after DRIVER BENEFITS section
-        benefits_pattern = "DRIVER BENEFITS:"
-        benefits_index = html_content.find(benefits_pattern)
-        
-        if benefits_index != -1:
-            # Find the end of the DRIVER BENEFITS section
-            import re
-            next_section_match = re.search(r'<br>[A-Z\s]+:', html_content[benefits_index:])
-            
-            if next_section_match:
-                insert_index = benefits_index + next_section_match.start()
-                html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
-            else:
-                ul_end_pattern = "</ul>"
-                ul_end_index = html_content.find(ul_end_pattern, benefits_index)
-                
-                if ul_end_index != -1:
-                    insert_index = ul_end_index + len(ul_end_pattern)
-                    html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
-                else:
-                    insert_index = benefits_index + len(benefits_pattern)
-                    html_content = html_content[:insert_index] + cost_html + html_content[insert_index:]
+ 
+
+        post_data = {
+            "title": title,
+            "slug": slug,
+            "content": full_content,
+            "status": "publish",
+            "categories": [category_id], 
+        }
+
+        headers = {
+            'Authorization': f'Basic {wp_conn.access_token}',
+            'Content-Type': 'application/json',
+        }
+
+
+        # ==============================
+        # REMOVED: Cost structure insertion 
+        # (Now handled by AI API automatically)
+        # ==============================
+
+        # ==============================
+        # WORDPRESS UPLOAD
+        # ==============================
+
+
+        # Determine the API endpoint based on whether we're creating or updating
+        if page_id:
+            # Update existing post
+            endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{page_id}"
+            response = requests.put(endpoint, headers=headers, json=post_data)
+            action = "update"
         else:
-            html_content += cost_html
+            # Create new post
+            endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts"
+            response = requests.post(endpoint, headers=headers, json=post_data)
+            action = "upload"
 
-    category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
+        if response.status_code not in [200, 201]:
+            error_msg = f"WordPress {action} failed: {response.text}"
+            logger.error(f"❌ {error_msg}")
+            raise Exception(error_msg)
+        
+        response_data = response.json()
+        page_url = response_data.get('link')  # This is the published URL
+        post_id = response_data.get('id')
 
-    slug = slugify(title)
-    post_data = {
-        "title": title,
-        "slug": slug,
-        "content": f"<div>{html_content}</div>{map_html}",
-        "status": "publish",
-        "categories": [category_id], 
-    }
+        # Store the WordPress post ID for future updates
+        if job_template and not job_template.wp_page_id and post_id:
+            job_template.wp_page_id = post_id
+            job_template.save()
 
-    headers = {
-        'Authorization': f'Basic {wp_conn.access_token}',
-        'Content-Type': 'application/json',
-    }
+        logger.info(f"✅ Job Post {action}ed to WordPress. URL: {page_url}")
 
-    # Determine the API endpoint based on whether we're creating or updating
-    if page_id:
-        # Update existing post
-        endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts/{page_id}"
-        response = requests.put(endpoint, headers=headers, json=post_data)
-    else:
-        # Create new post
-        endpoint = f"{wp_conn.site_url.rstrip('/')}/wp-json/wp/v2/posts"
-        response = requests.post(endpoint, headers=headers, json=post_data)
+        return page_url
 
-    if response.status_code not in [200, 201]:
-        raise Exception(f"WordPress {'update' if page_id else 'upload'} failed: {response.text}")
-    
-    response_data = response.json()
-    page_url = response_data.get('link')  # This is the published URL
-    post_id = response_data.get('id')
+    except Exception as e:
+        logger.exception(f"❌ Error in upload_job_post_to_wordpress: {str(e)}")
+        return None
 
-    # Store the WordPress post ID for future updates
-    if job_template and not job_template.wp_page_id and post_id:
-        job_template.wp_page_id = post_id
-        job_template.save()
-
-    logger.info(f"✅ Job Post {'updated' if page_id else 'uploaded'} to WordPress. URL: {page_url}")
-
-    return page_url
-
+def remove_hiring_section(html_content):
+    """
+    Remove the hiring section from HTML content to avoid duplication
+    """
+    try:
+        lines = html_content.split('\n')
+        cleaned_lines = []
+        skip_mode = False
+        hiring_keywords = ["NOW HIRING FROM:", "HIRING WITHIN A", "HIRING FROM:"]
+        
+        for line in lines:
+            line_stripped = line.strip()
+            
+            # Check if this line starts a hiring section
+            if any(keyword in line_stripped for keyword in hiring_keywords):
+                skip_mode = True
+                continue
+            
+            # If we're in skip mode and hit an empty line or cost breakdown, stop skipping
+            if skip_mode and (line_stripped == "" or "COST BREAKDOWN:" in line_stripped or "LEASE-" in line_stripped):
+                skip_mode = False
+            
+            # Add line if not in skip mode
+            if not skip_mode:
+                cleaned_lines.append(line)
+        
+        cleaned_content = '\n'.join(cleaned_lines)
+        print(f"🔍 Cleaned hiring section from content")
+        return cleaned_content
+        
+    except Exception as e:
+        print(f"❌ Error removing hiring section: {e}")
+        return html_content
 
 def fix_html_content_issues(html_content, job_form, api_payload):
     """Fix common issues in the generated HTML content"""
@@ -491,66 +722,171 @@ def fix_html_content_issues(html_content, job_form, api_payload):
 #     return page_url
 
 
-def generate_map_html(api_payload):
+# def generate_map_html(api_payload):
+#     """
+#     Generate USA map HTML based on route type and hiring area.
+#     - Local: radius only, no map
+#     - Regional: highlight states on USA map
+#     - OTR: show full USA map
+#     """
+#     route = api_payload.get("route", "").lower()
+#     hiring_area = api_payload.get("hiring_area", {})
+#     states = hiring_area.get("states", [])
+#     radius = hiring_area.get("radius")
+#     route_type = hiring_area.get("type", "").lower()
+
+#     effective_route = route_type if route_type else route
+#     # Local → no map, just radius text
+#     if effective_route  == "local" and radius:
+#         return f"<p><strong>Hiring Radius:</strong> Within {radius} miles</p>"
+
+#     # Regional → highlight specific states
+#     if effective_route  == "regional" and states:
+#         states_js = ",".join([f'"{s}"' for s in states])
+#         return f"""
+#         <div id="regional-map" style="width: 100%; height: 500px;"></div>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+#         <script>
+#         var states = [{states_js}];
+#         var map = new Datamap({{
+#             element: document.getElementById('regional-map'),
+#             scope: 'usa',
+#             fills: {{
+#                 defaultFill: '#D6DBDF',
+#                 highlight: '#2E86C1'
+#             }},
+#             data: states.reduce((acc, s) => {{
+#                 acc[s] = {{ fillKey: 'highlight' }};
+#                 return acc;
+#             }}, {{}})
+#         }});
+#         </script>
+#         """
+
+#     # OTR → full USA map
+#     if effective_route  == "otr":
+#         return """
+#         <div id="otr-map" style="width: 100%; height: 500px;"></div>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+#         <script>
+#         var map = new Datamap({
+#             element: document.getElementById('otr-map'),
+#             scope: 'usa',
+#             fills: { defaultFill: '#2E86C1' }
+#         });
+#         </script>
+#         """
+
+#     return ""
+
+
+import json
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+def generate_map_html(job_form, ai_api_response):
     """
-    Generate USA map HTML based on route type and hiring area.
-    - Local: radius only, no map
-    - Regional: highlight states on USA map
-    - OTR: show full USA map
+    EXACT REPLICA of the old working function with debugging
     """
-    route = api_payload.get("route", "").lower()
-    hiring_area = api_payload.get("hiring_area", {})
-    states = hiring_area.get("states", [])
-    radius = hiring_area.get("radius")
-    route_type = hiring_area.get("type", "").lower()
+    try:
+        route = getattr(job_form, 'route', '').lower()
+        states = getattr(job_form, 'states', [])
+        radius = getattr(job_form, 'radius', '')
+        
+        print(f"🔍 MAP DEBUG - Route: {route}, States: {states}, Radius: {radius}")
+        logger.info(f"🔍 MAP DEBUG - Route: {route}, States: {states}, Radius: {radius}")
+        
+        # Local route - just show radius
+        if route == "local" and radius:
+            html = f"""
+            <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #2E86C1; margin-bottom: 10px;">📍 Hiring Area</h3>
+                <p style="font-size: 16px; margin: 0;"><strong>Hiring Radius:</strong> Within {radius} miles of your location</p>
+            </div>
+            """
+            print(f"📍 Returning LOCAL map HTML (length: {len(html)})")
+            return html
+        
+        # Regional → highlight specific states
+        if route == "regional" and states:
+            states_js = ",".join([f'"{s}"' for s in states])
+            states_str = ', '.join(states)
+            state_count = len(states)
+            
+            html = f"""
+            <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #2E86C1; margin-bottom: 10px;">🗺️ Regional Hiring Area</h3>
+                <p style="font-size: 16px; margin-bottom: 15px;">
+                    <strong>Now hiring drivers from {state_count} states:</strong> {states_str}
+                </p>
+                <div id="regional-map" style="width: 100%; height: 500px; background: white; border-radius: 6px;"></div>
+            </div>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+            <script>
+            var states = [{states_js}];
+            var map = new Datamap({{
+                element: document.getElementById('regional-map'),
+                scope: 'usa',
+                fills: {{
+                    defaultFill: '#D6DBDF',
+                    highlight: '#2E86C1'
+                }},
+                data: states.reduce((acc, s) => {{
+                    acc[s] = {{ fillKey: 'highlight' }};
+                    return acc;
+                }}, {{}})
+            }});
+            </script>
+            """
+            
+            print(f"🗺️ Returning REGIONAL map HTML (length: {len(html)})")
+            print(f"🗺️ HTML Preview (first 200 chars): {html[:200]}")
+            logger.info(f"🗺️ REGIONAL map HTML generated with {len(states)} states")
+            return html
 
-    effective_route = route_type if route_type else route
-    # Local → no map, just radius text
-    if effective_route  == "local" and radius:
-        return f"<p><strong>Hiring Radius:</strong> Within {radius} miles</p>"
+        # OTR → full USA map
+        if route == "otr":
+            html = """
+            <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #2E86C1; margin-bottom: 10px;">US Over-The-Road (OTR) Hiring</h3>
+                <p style="font-size: 16px; margin-bottom: 15px;">
+                    <strong>Now hiring drivers nationwide</strong> 
+                </p>
+                <div id="otr-map" style="width: 100%; height: 500px; background: white; border-radius: 6px;"></div>
+            </div>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+            <script>
+            var map = new Datamap({
+                element: document.getElementById('otr-map'),
+                scope: 'usa',
+                fills: { defaultFill: '#2E86C1' }
+            });
+            </script>
+            """
+            
+            print(f"🇺🇸 Returning OTR map HTML (length: {len(html)})")
+            logger.info(f"🇺🇸 OTR map HTML generated")
+            return html
 
-    # Regional → highlight specific states
-    if effective_route  == "regional" and states:
-        states_js = ",".join([f'"{s}"' for s in states])
-        return f"""
-        <div id="regional-map" style="width: 100%; height: 500px;"></div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
-        <script>
-        var states = [{states_js}];
-        var map = new Datamap({{
-            element: document.getElementById('regional-map'),
-            scope: 'usa',
-            fills: {{
-                defaultFill: '#D6DBDF',
-                highlight: '#2E86C1'
-            }},
-            data: states.reduce((acc, s) => {{
-                acc[s] = {{ fillKey: 'highlight' }};
-                return acc;
-            }}, {{}})
-        }});
-        </script>
-        """
-
-    # OTR → full USA map
-    if effective_route  == "otr":
-        return """
-        <div id="otr-map" style="width: 100%; height: 500px;"></div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
-        <script>
-        var map = new Datamap({
-            element: document.getElementById('otr-map'),
-            scope: 'usa',
-            fills: { defaultFill: '#2E86C1' }
-        });
-        </script>
-        """
-
-    return ""
+        # No matching route
+        print(f"⚠️ No matching route type. Route: {route}, States: {states}")
+        logger.warning(f"⚠️ No matching route type. Route: {route}, States: {states}")
+        return ""
+        
+    except Exception as e:
+        print(f"❌ EXCEPTION in generate_map_html: {e}")
+        logger.error(f"❌ Error generating map HTML: {e}", exc_info=True)
+        return ""
 
 
 
