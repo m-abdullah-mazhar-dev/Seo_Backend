@@ -323,6 +323,20 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, p
     try:
         wp_conn = wp_conn
 
+
+        print(f"🔍 === MAP DATA DEBUG ===")
+        print(f"🔍 Job Form Type: {type(job_form)}")
+        print(f"🔍 Job Form Route: {getattr(job_form, 'route', 'NOT FOUND')}")
+        print(f"🔍 Job Form States: {getattr(job_form, 'states', 'NOT FOUND')}")
+        print(f"🔍 Job Form Radius: {getattr(job_form, 'radius', 'NOT FOUND')}")
+        print(f"🔍 API Payload Type: {type(api_payload)}")
+        if api_payload and isinstance(api_payload, dict):
+            print(f"🔍 API Payload Route: {api_payload.get('route')}")
+            print(f"🔍 API Payload States: {api_payload.get('states')}")
+        else:
+            print(f"🔍 API Payload is not a dictionary: {api_payload}")
+        print("🔍 === END DEBUG ===")
+
         # ==============================
         # TITLE GENERATION
         # ==============================
@@ -369,20 +383,91 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, p
         # ==============================
         # MAP GENERATION (keep your existing logic)
         # ==============================
-        map_html = generate_map_html(api_payload)
+
+
+
+        map_html = generate_map_html(job_form, api_payload) 
+
+
+
+        route = getattr(job_form, 'route', '')
+        states = getattr(job_form, 'states', [])
+
+
+        logger.info(f"🗺️ Generated map HTML for {route} route with {len(states)} states")
+
+
+
+
+        # cleaned_content = remove_hiring_section(html_content)
+        cleaned_content = html_content 
 
         # ==============================
         # CONTENT CLEANUP (keep your existing logic)
         # ==============================
         
         # POST-PROCESSING: Clean up the HTML content for local routes
-        hiring_area = api_payload.get("hiring_area", {})
-        route_type = hiring_area.get("type", "").lower()
+        # hiring_area = api_payload.get("hiring_area", {})
+        # route_type = hiring_area.get("type", "").lower()
 
-        if route_type == "local":
-            html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
-        elif route_type == "otr":
-            html_content = html_content.replace('States:', '')
+        # if route_type == "local":
+        #     html_content = html_content.replace('HIRING FROM:<br>+ Regions: <br>States:', '')
+        # elif route_type == "otr":
+        #     html_content = html_content.replace('States:', '')
+
+        category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
+
+        slug = slugify(title)
+
+        
+        full_content = f"""
+        <div class="job-posting" style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            {cleaned_content}
+            {map_html if map_html else '<div class="hiring-area"><h3>📍 Hiring Area</h3><p>Multiple locations available - contact us for specific hiring areas.</p></div>'}
+        </div>
+        
+        <style>
+        .hiring-area {{
+            background: #f8fafc;
+            border-left: 4px solid #3b82f6;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 0 8px 8px 0;
+        }}
+        .hiring-area h3 {{
+            margin: 0 0 12px 0;
+            color: #1e40af;
+            font-size: 1.3em;
+        }}
+        .job-posting h1, .job-posting h2, .job-posting h3 {{
+            color: #1f2937;
+        }}
+        .job-posting ul {{
+            padding-left: 20px;
+        }}
+        .job-posting li {{
+            margin-bottom: 8px;
+        }}
+        </style>
+        """
+        
+   
+        
+ 
+
+        post_data = {
+            "title": title,
+            "slug": slug,
+            "content": full_content,
+            "status": "publish",
+            "categories": [category_id], 
+        }
+
+        headers = {
+            'Authorization': f'Basic {wp_conn.access_token}',
+            'Content-Type': 'application/json',
+        }
+
 
         # ==============================
         # REMOVED: Cost structure insertion 
@@ -392,21 +477,7 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, p
         # ==============================
         # WORDPRESS UPLOAD
         # ==============================
-        category_id = get_or_create_category(wp_conn, slug="jobs", name="Jobs", description="Trucking job listings")
 
-        slug = slugify(title)
-        post_data = {
-            "title": title,
-            "slug": slug,
-            "content": f"<div>{html_content}</div>{map_html}",
-            "status": "publish",
-            "categories": [category_id], 
-        }
-
-        headers = {
-            'Authorization': f'Basic {wp_conn.access_token}',
-            'Content-Type': 'application/json',
-        }
 
         # Determine the API endpoint based on whether we're creating or updating
         if page_id:
@@ -441,6 +512,40 @@ def upload_job_post_to_wordpress(job_form, wp_conn, html_content, api_payload, p
     except Exception as e:
         logger.exception(f"❌ Error in upload_job_post_to_wordpress: {str(e)}")
         return None
+
+def remove_hiring_section(html_content):
+    """
+    Remove the hiring section from HTML content to avoid duplication
+    """
+    try:
+        lines = html_content.split('\n')
+        cleaned_lines = []
+        skip_mode = False
+        hiring_keywords = ["NOW HIRING FROM:", "HIRING WITHIN A", "HIRING FROM:"]
+        
+        for line in lines:
+            line_stripped = line.strip()
+            
+            # Check if this line starts a hiring section
+            if any(keyword in line_stripped for keyword in hiring_keywords):
+                skip_mode = True
+                continue
+            
+            # If we're in skip mode and hit an empty line or cost breakdown, stop skipping
+            if skip_mode and (line_stripped == "" or "COST BREAKDOWN:" in line_stripped or "LEASE-" in line_stripped):
+                skip_mode = False
+            
+            # Add line if not in skip mode
+            if not skip_mode:
+                cleaned_lines.append(line)
+        
+        cleaned_content = '\n'.join(cleaned_lines)
+        print(f"🔍 Cleaned hiring section from content")
+        return cleaned_content
+        
+    except Exception as e:
+        print(f"❌ Error removing hiring section: {e}")
+        return html_content
 
 def fix_html_content_issues(html_content, job_form, api_payload):
     """Fix common issues in the generated HTML content"""
@@ -617,66 +722,171 @@ def fix_html_content_issues(html_content, job_form, api_payload):
 #     return page_url
 
 
-def generate_map_html(api_payload):
+# def generate_map_html(api_payload):
+#     """
+#     Generate USA map HTML based on route type and hiring area.
+#     - Local: radius only, no map
+#     - Regional: highlight states on USA map
+#     - OTR: show full USA map
+#     """
+#     route = api_payload.get("route", "").lower()
+#     hiring_area = api_payload.get("hiring_area", {})
+#     states = hiring_area.get("states", [])
+#     radius = hiring_area.get("radius")
+#     route_type = hiring_area.get("type", "").lower()
+
+#     effective_route = route_type if route_type else route
+#     # Local → no map, just radius text
+#     if effective_route  == "local" and radius:
+#         return f"<p><strong>Hiring Radius:</strong> Within {radius} miles</p>"
+
+#     # Regional → highlight specific states
+#     if effective_route  == "regional" and states:
+#         states_js = ",".join([f'"{s}"' for s in states])
+#         return f"""
+#         <div id="regional-map" style="width: 100%; height: 500px;"></div>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+#         <script>
+#         var states = [{states_js}];
+#         var map = new Datamap({{
+#             element: document.getElementById('regional-map'),
+#             scope: 'usa',
+#             fills: {{
+#                 defaultFill: '#D6DBDF',
+#                 highlight: '#2E86C1'
+#             }},
+#             data: states.reduce((acc, s) => {{
+#                 acc[s] = {{ fillKey: 'highlight' }};
+#                 return acc;
+#             }}, {{}})
+#         }});
+#         </script>
+#         """
+
+#     # OTR → full USA map
+#     if effective_route  == "otr":
+#         return """
+#         <div id="otr-map" style="width: 100%; height: 500px;"></div>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+#         <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+#         <script>
+#         var map = new Datamap({
+#             element: document.getElementById('otr-map'),
+#             scope: 'usa',
+#             fills: { defaultFill: '#2E86C1' }
+#         });
+#         </script>
+#         """
+
+#     return ""
+
+
+import json
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+def generate_map_html(job_form, ai_api_response):
     """
-    Generate USA map HTML based on route type and hiring area.
-    - Local: radius only, no map
-    - Regional: highlight states on USA map
-    - OTR: show full USA map
+    EXACT REPLICA of the old working function with debugging
     """
-    route = api_payload.get("route", "").lower()
-    hiring_area = api_payload.get("hiring_area", {})
-    states = hiring_area.get("states", [])
-    radius = hiring_area.get("radius")
-    route_type = hiring_area.get("type", "").lower()
+    try:
+        route = getattr(job_form, 'route', '').lower()
+        states = getattr(job_form, 'states', [])
+        radius = getattr(job_form, 'radius', '')
+        
+        print(f"🔍 MAP DEBUG - Route: {route}, States: {states}, Radius: {radius}")
+        logger.info(f"🔍 MAP DEBUG - Route: {route}, States: {states}, Radius: {radius}")
+        
+        # Local route - just show radius
+        if route == "local" and radius:
+            html = f"""
+            <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #2E86C1; margin-bottom: 10px;">📍 Hiring Area</h3>
+                <p style="font-size: 16px; margin: 0;"><strong>Hiring Radius:</strong> Within {radius} miles of your location</p>
+            </div>
+            """
+            print(f"📍 Returning LOCAL map HTML (length: {len(html)})")
+            return html
+        
+        # Regional → highlight specific states
+        if route == "regional" and states:
+            states_js = ",".join([f'"{s}"' for s in states])
+            states_str = ', '.join(states)
+            state_count = len(states)
+            
+            html = f"""
+            <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #2E86C1; margin-bottom: 10px;">🗺️ Regional Hiring Area</h3>
+                <p style="font-size: 16px; margin-bottom: 15px;">
+                    <strong>Now hiring drivers from {state_count} states:</strong> {states_str}
+                </p>
+                <div id="regional-map" style="width: 100%; height: 500px; background: white; border-radius: 6px;"></div>
+            </div>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+            <script>
+            var states = [{states_js}];
+            var map = new Datamap({{
+                element: document.getElementById('regional-map'),
+                scope: 'usa',
+                fills: {{
+                    defaultFill: '#D6DBDF',
+                    highlight: '#2E86C1'
+                }},
+                data: states.reduce((acc, s) => {{
+                    acc[s] = {{ fillKey: 'highlight' }};
+                    return acc;
+                }}, {{}})
+            }});
+            </script>
+            """
+            
+            print(f"🗺️ Returning REGIONAL map HTML (length: {len(html)})")
+            print(f"🗺️ HTML Preview (first 200 chars): {html[:200]}")
+            logger.info(f"🗺️ REGIONAL map HTML generated with {len(states)} states")
+            return html
 
-    effective_route = route_type if route_type else route
-    # Local → no map, just radius text
-    if effective_route  == "local" and radius:
-        return f"<p><strong>Hiring Radius:</strong> Within {radius} miles</p>"
+        # OTR → full USA map
+        if route == "otr":
+            html = """
+            <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #2E86C1; margin-bottom: 10px;">US Over-The-Road (OTR) Hiring</h3>
+                <p style="font-size: 16px; margin-bottom: 15px;">
+                    <strong>Now hiring drivers nationwide</strong> 
+                </p>
+                <div id="otr-map" style="width: 100%; height: 500px; background: white; border-radius: 6px;"></div>
+            </div>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+            <script>
+            var map = new Datamap({
+                element: document.getElementById('otr-map'),
+                scope: 'usa',
+                fills: { defaultFill: '#2E86C1' }
+            });
+            </script>
+            """
+            
+            print(f"🇺🇸 Returning OTR map HTML (length: {len(html)})")
+            logger.info(f"🇺🇸 OTR map HTML generated")
+            return html
 
-    # Regional → highlight specific states
-    if effective_route  == "regional" and states:
-        states_js = ",".join([f'"{s}"' for s in states])
-        return f"""
-        <div id="regional-map" style="width: 100%; height: 500px;"></div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
-        <script>
-        var states = [{states_js}];
-        var map = new Datamap({{
-            element: document.getElementById('regional-map'),
-            scope: 'usa',
-            fills: {{
-                defaultFill: '#D6DBDF',
-                highlight: '#2E86C1'
-            }},
-            data: states.reduce((acc, s) => {{
-                acc[s] = {{ fillKey: 'highlight' }};
-                return acc;
-            }}, {{}})
-        }});
-        </script>
-        """
-
-    # OTR → full USA map
-    if effective_route  == "otr":
-        return """
-        <div id="otr-map" style="width: 100%; height: 500px;"></div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
-        <script>
-        var map = new Datamap({
-            element: document.getElementById('otr-map'),
-            scope: 'usa',
-            fills: { defaultFill: '#2E86C1' }
-        });
-        </script>
-        """
-
-    return ""
+        # No matching route
+        print(f"⚠️ No matching route type. Route: {route}, States: {states}")
+        logger.warning(f"⚠️ No matching route type. Route: {route}, States: {states}")
+        return ""
+        
+    except Exception as e:
+        print(f"❌ EXCEPTION in generate_map_html: {e}")
+        logger.error(f"❌ Error generating map HTML: {e}", exc_info=True)
+        return ""
 
 
 

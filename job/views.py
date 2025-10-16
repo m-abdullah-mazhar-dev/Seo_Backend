@@ -2443,6 +2443,23 @@ def clean_generated_html(html_content, job_form):
     import re
     
     print(html_content, "html content giving to the clean function directly after ai response ")
+
+    # NEW: Remove "HIRING WITHIN A [X] MILE RADIUS OF TERMINAL" (any radius)
+    html_content = re.sub(
+        r'HIRING\s+WITHIN\s+A\s+\d+\s+MILE\s+RADIUS\s+OF\s+TERMINAL\s*[\r\n]*',
+        '',
+        html_content,
+        flags=re.IGNORECASE
+    )
+    
+        # Alternative: Remove any line that starts with "NOW HIRING FROM:" 
+    html_content = re.sub(
+        r'NOW HIRING FROM: [A-Z, ]+\s*[\r\n]*',
+        '',
+        html_content,
+        flags=re.IGNORECASE
+    )
+
     
     # FIX 1: PRESERVE EXTRA section - only remove if truly empty
     # Check if EXTRA: exists but has no content after it
