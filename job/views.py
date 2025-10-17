@@ -2077,6 +2077,7 @@ def map_job_form_to_api_payload(job_form):
         home_time_item_upper = home_time_item.upper().strip()
         mapped = home_time_mapping.get(home_time_item_upper, home_time_item)
         home_time_selections.append(mapped)
+        print(home_time_selections, "-------------------------------- home time")
     
     # # Map home time to AI API format
     # home_time_selections = []
@@ -2143,19 +2144,19 @@ def map_job_form_to_api_payload(job_form):
     # Build driver benefits
     driver_benefits = []
     transmission = []
-    if job_form.transmission_automatic or job_form.main_auto_transmission:
-        transmission.append("AUTOMATIC TRUCKS AVAILABLE")
-    if job_form.transmission_manual or job_form.main_manual_transmission:
-        transmission.append("MANUAL TRUCKS AVAILABLE")
+    # if job_form.transmission_automatic or job_form.main_auto_transmission:
+    #     transmission.append("AUTOMATIC TRUCKS AVAILABLE")
+    # if job_form.transmission_manual or job_form.main_manual_transmission:
+    #     transmission.append("MANUAL TRUCKS AVAILABLE")
     
     if transmission:
         driver_benefits.extend(transmission)
     
-    if job_form.truck_governed_speed:
-        driver_benefits.append(f"TRUCKS GOVERNED AT {job_form.truck_governed_speed}")
+    # if job_form.truck_governed_speed:
+    #     driver_benefits.append(f"TRUCKS GOVERNED AT {job_form.truck_governed_speed}")
     
-    if job_form.truck_make_year:
-        driver_benefits.append(f"FLEET INCLUDES {job_form.truck_make_year}")
+    # if job_form.truck_make_year:
+    #     driver_benefits.append(f"FLEET INCLUDES {job_form.truck_make_year}")
     
     if job_form.benefit_weekly_deposits or job_form.main_weekly_deposits:
         driver_benefits.append("WEEKLY DIRECT DEPOSITS")
@@ -2172,6 +2173,10 @@ def map_job_form_to_api_payload(job_form):
 
     if job_form.fuel_card and job_form.fuel_card_type:
         driver_benefits.append(f"FUEL CARD PROVIDED – {job_form.fuel_card_type.upper()}")
+
+    
+    if job_form.toll_passes:
+        driver_benefits.append(f"TOLL PASSES INCLUDED – {job_form.toll_passes.upper()}")
 
     if job_form.offer_cash_advances and job_form.cash_advance_amount:
         driver_benefits.append(f"CASH ADVANCES AVAILABLE – ${job_form.cash_advance_amount}")
