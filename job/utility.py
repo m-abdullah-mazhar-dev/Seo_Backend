@@ -790,10 +790,143 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# def generate_map_html(job_form, ai_api_response):
+#     """
+#     EXACT REPLICA of the old working function with debugging
+#     """
+#     try:
+#         route = getattr(job_form, 'route', '').lower()
+#         states = getattr(job_form, 'states', [])
+#         radius = getattr(job_form, 'radius', '')
+        
+#         print(f"🔍 MAP DEBUG - Route: {route}, States: {states}, Radius: {radius}")
+#         logger.info(f"🔍 MAP DEBUG - Route: {route}, States: {states}, Radius: {radius}")
+        
+#         # Local route - just show radius
+#         if route == "local" and radius:
+#             html = f"""
+#             <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+#                 <h3 style="color: #2E86C1; margin-bottom: 10px;">📍 Hiring Area</h3>
+#                 <p style="font-size: 16px; margin: 0;"><strong>Hiring Radius:</strong> Within {radius} miles of your location</p>
+#             </div>
+#             """
+#             print(f"📍 Returning LOCAL map HTML (length: {len(html)})")
+#             return html
+        
+#         # Regional → highlight specific states
+#         if route == "regional" and states:
+#             states_js = ",".join([f'"{s}"' for s in states])
+#             states_str = ', '.join(states)
+#             state_count = len(states)
+            
+#             html = f"""
+#             <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+#                 <h3 style="color: #2E86C1; margin-bottom: 10px;">🗺️ Regional Hiring Area</h3>
+#                 <p style="font-size: 16px; margin-bottom: 15px;">
+#                     <strong>Now hiring drivers from {state_count} states:</strong> {states_str}
+#                 </p>
+#                 <div id="regional-map" style="width: 100%; height: 500px; background: white; border-radius: 6px;"></div>
+#             </div>
+#             <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+#             <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+#             <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+#             <script>
+#             var states = [{states_js}];
+#             var map = new Datamap({{
+#                 element: document.getElementById('regional-map'),
+#                 scope: 'usa',
+#                 fills: {{
+#                     defaultFill: '#D6DBDF',
+#                     highlight: '#2E86C1'
+#                 }},
+#                 data: states.reduce((acc, s) => {{
+#                     acc[s] = {{ fillKey: 'highlight' }};
+#                     return acc;
+#                 }}, {{}})
+#             }});
+#             </script>
+#             """
+            
+#             print(f"🗺️ Returning REGIONAL map HTML (length: {len(html)})")
+#             print(f"🗺️ HTML Preview (first 200 chars): {html[:200]}")
+#             logger.info(f"🗺️ REGIONAL map HTML generated with {len(states)} states")
+#             return html
+
+#         # OTR → full USA map
+#         if route == "otr":
+#             html = """
+#             <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+#                 <h3 style="color: #2E86C1; margin-bottom: 10px;">US Over-The-Road (OTR) Hiring</h3>
+#                 <p style="font-size: 16px; margin-bottom: 15px;">
+#                     <strong>Now hiring drivers nationwide</strong> 
+#                 </p>
+#                 <div id="otr-map" style="width: 100%; height: 500px; background: white; border-radius: 6px;"></div>
+#             </div>
+#             <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js"></script>
+#             <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js"></script>
+#             <script src="https://cdnjs.cloudflare.com/ajax/libs/datamaps/0.5.9/datamaps.usa.min.js"></script>
+#             <script>
+#             var map = new Datamap({
+#                 element: document.getElementById('otr-map'),
+#                 scope: 'usa',
+#                 fills: { defaultFill: '#2E86C1' }
+#             });
+#             </script>
+#             """
+            
+#             print(f"🇺🇸 Returning OTR map HTML (length: {len(html)})")
+#             logger.info(f"🇺🇸 OTR map HTML generated")
+#             return html
+
+#         # No matching route
+#         print(f"⚠️ No matching route type. Route: {route}, States: {states}")
+#         logger.warning(f"⚠️ No matching route type. Route: {route}, States: {states}")
+#         return ""
+        
+#     except Exception as e:
+#         print(f"❌ EXCEPTION in generate_map_html: {e}")
+#         logger.error(f"❌ Error generating map HTML: {e}", exc_info=True)
+#         return ""
+
 def generate_map_html(job_form, ai_api_response):
     """
-    EXACT REPLICA of the old working function with debugging
+    Map generation with support for both state abbreviations and full names
     """
+    # State name to abbreviation mapping
+    STATE_MAPPING = {
+        'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
+        'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE',
+        'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID',
+        'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA', 'kansas': 'KS',
+        'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+        'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+        'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV',
+        'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+        'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH', 'oklahoma': 'OK',
+        'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+        'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+        'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV',
+        'wisconsin': 'WI', 'wyoming': 'WY', 'district of columbia': 'DC'
+    }
+    
+    def normalize_states(states):
+        """Convert state names to abbreviations"""
+        normalized = []
+        for state in states:
+            state_str = str(state).strip()
+            # If already abbreviated (2 chars and uppercase)
+            if len(state_str) == 2 and state_str.isupper():
+                normalized.append(state_str)
+            else:
+                # Try to convert full name to abbreviation
+                abbr = STATE_MAPPING.get(state_str.lower())
+                if abbr:
+                    normalized.append(abbr)
+                else:
+                    # If can't find, keep original (might already be abbr in mixed case)
+                    normalized.append(state_str.upper())
+        return normalized
+    
     try:
         route = getattr(job_form, 'route', '').lower()
         states = getattr(job_form, 'states', [])
@@ -815,9 +948,15 @@ def generate_map_html(job_form, ai_api_response):
         
         # Regional → highlight specific states
         if route == "regional" and states:
-            states_js = ",".join([f'"{s}"' for s in states])
-            states_str = ', '.join(states)
-            state_count = len(states)
+            # Normalize states to abbreviations
+            normalized_states = normalize_states(states)
+            
+            states_js = ",".join([f'"{s}"' for s in normalized_states])
+            states_str = ', '.join(normalized_states)
+            state_count = len(normalized_states)
+            
+            print(f"🔄 Normalized states: {states} → {normalized_states}")
+            logger.info(f"🔄 Normalized states: {states} → {normalized_states}")
             
             html = f"""
             <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -849,14 +988,14 @@ def generate_map_html(job_form, ai_api_response):
             
             print(f"🗺️ Returning REGIONAL map HTML (length: {len(html)})")
             print(f"🗺️ HTML Preview (first 200 chars): {html[:200]}")
-            logger.info(f"🗺️ REGIONAL map HTML generated with {len(states)} states")
+            logger.info(f"🗺️ REGIONAL map HTML generated with {len(normalized_states)} states")
             return html
 
         # OTR → full USA map
         if route == "otr":
             html = """
             <div class="hiring-area" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3 style="color: #2E86C1; margin-bottom: 10px;">US Over-The-Road (OTR) Hiring</h3>
+                <h3 style="color: #2E86C1; margin-bottom: 10px;">🇺🇸 Over-The-Road (OTR) Hiring</h3>
                 <p style="font-size: 16px; margin-bottom: 15px;">
                     <strong>Now hiring drivers nationwide</strong> 
                 </p>
@@ -887,7 +1026,6 @@ def generate_map_html(job_form, ai_api_response):
         print(f"❌ EXCEPTION in generate_map_html: {e}")
         logger.error(f"❌ Error generating map HTML: {e}", exc_info=True)
         return ""
-
 
 
 
