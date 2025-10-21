@@ -700,11 +700,6 @@ def generate_wordpress_token(username, application_password):
 
 
 class ConnectWordPressAPI(APIView):
-    """
-    Try to connect to WordPress.
-    Only create DB entry if verified successfully.
-    If already exists for the user → return error.
-    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -715,23 +710,56 @@ class ConnectWordPressAPI(APIView):
         if not all([site_url, username, app_password]):
             return Response({"error": "Missing required fields."}, status=400)
         
-        if not hasattr(request.user, "usersubscription") or request.user.usersubscription.status != "active":
+        # ?? Map service types to actual database names
+        from SEO_Automation.db_router import set_current_service, get_current_service
+        
+        # Get current service from request
+        current_service = getattr(request, 'service_type', 'seo')
+        set_current_service(current_service)
+        
+        # ?? MAP service names to actual database names
+        database_map = {
+            'seo': 'default',      # SEO uses 'default' database
+            'trucking': 'trucking' # Trucking uses 'trucking' database
+        }
+        
+        db_alias = database_map.get(current_service, 'default')
+        
+        print(f"?? WordPress Connect - Service: {current_service}, DB: {db_alias}, User: {request.user.email}")
+        
+        # ?? Check subscription with correct database alias
+        try:
+            user_subscription = UserSubscription.objects.using(db_alias).get(user=request.user)
+            
+            if user_subscription.status != "active":
+                return Response(
+                    {"error": "User doesn't have active subscription"},
+                    status=400
+                )
+                
+            print(f"? Subscription found: {user_subscription.status}")
+            
+        except UserSubscription.DoesNotExist:
+            print(f"? No subscription found for user {request.user.email} in {db_alias} database")
             return Response(
-                {"error": "User Dosen't have subscription"},
+                {"error": "User doesn't have subscription"},
                 status=400
             )
 
-        # 🔹 Check if connection already exists for this user
-        if hasattr(request.user, "wordpress_connection"):
+        # ?? Check if connection already exists for this user
+        try:
+            existing_connection = WordPressConnection.objects.using(db_alias).get(user=request.user)
             return Response(
                 {"error": "WordPress connection already exists for this user."},
                 status=400
             )
+        except WordPressConnection.DoesNotExist:
+            pass  # No existing connection, continue
 
-        # 🔹 Generate token
+        # ?? Generate token
         access_token = generate_wordpress_token(username, app_password)
 
-        # 🔹 Verify first before saving
+        # ?? Verify first before saving
         url = f"{site_url.rstrip('/')}/wp-json/wp/v2/users/me"
         headers = {'Authorization': f'Basic {access_token.strip()}'}
 
@@ -739,49 +767,45 @@ class ConnectWordPressAPI(APIView):
             response = requests.get(url, headers=headers, timeout=10)
 
             if response.status_code == 200:
-                # ✅ Save only if valid (create new)
-                wp_conn = WordPressConnection.objects.create(
+                # ? Save only if valid (create new) - using correct database
+                wp_conn = WordPressConnection.objects.using(db_alias).create(
                     user=request.user,
                     site_url=site_url,
                     access_token=access_token,
                 )
 
-
-                # ✅ Create Service Page (directly using site_url as page_url)
-                service_page = ServicePage.objects.create(
+                # ? Create Service Page
+                service_page = ServicePage.objects.using(db_alias).create(
                     user=request.user,
                     wordpress_connection=wp_conn,
-                    page_url=site_url,   # <-- use site_url directly
-                    blog_required=True   # by default blog is required when connecting
+                    page_url=site_url,
+                    blog_required=True
                 )
 
-                # ✅ Get interval from user's package
-                onboarding_form = OnboardingForm.objects.filter(user=request.user).first()
+                # ? Get interval from user's package
+                onboarding_form = OnboardingForm.objects.using(db_alias).filter(user=request.user).first()
                 if not onboarding_form or not onboarding_form.package:
                     return Response({"error": "User package not found."}, status=400)
 
                 interval_days = onboarding_form.package.interval
                 next_run = timezone.now()
-                # next_run = timezone.now() + timedelta(days=interval_days)
 
-                # ✅ Create SEO Optimization Task
-                SEOTask.objects.create(
+                # ? Create SEO Tasks using correct database
+                SEOTask.objects.using(db_alias).create(
                     user=request.user,
                     service_page=service_page,
                     task_type="seo_optimization",
                     next_run=next_run
                 )
 
-                # ✅ Create Blog Writing Task
-                SEOTask.objects.create(
+                SEOTask.objects.using(db_alias).create(
                     user=request.user,
                     service_page=service_page,
                     task_type="blog_writing",
                     next_run=next_run
                 )
 
-                # ✅ Create Keyword Optimization Task
-                SEOTask.objects.create(
+                SEOTask.objects.using(db_alias).create(
                     user=request.user,
                     service_page=service_page,
                     task_type="keyword_optimization",

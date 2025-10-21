@@ -9,6 +9,7 @@ from payment.serializers import UserSubscriptionSerializer
 from .models import Package, UserSubscription
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse, HttpResponse
+from SEO_Automation.db_router import *
 
 from django.contrib.auth import get_user_model
 User = get_user_model()
@@ -23,6 +24,9 @@ class CreateSubscription(APIView):
             package_id = request.data.get('package_id')
             package = Package.objects.get(id=package_id)
             user = request.user
+            
+            current_service = get_current_service()
+            print("current service is ",current_service, "current service ---------------")
 
             # 0️⃣ Check if user already has an active subscription
             existing_sub = UserSubscription.objects.filter(user=user).first()
@@ -38,7 +42,10 @@ class CreateSubscription(APIView):
             customer = stripe.Customer.create(
                 email=user.email,
                 name=f"{user.first_name} {user.last_name}",
-                metadata={"user_id": user.id}
+                metadata={
+                    "user_id": user.id,
+                     "domain": current_service    # ? add this line
+                }
             )
 
             # 2. Create Subscription with explicit payment collection
@@ -52,7 +59,10 @@ class CreateSubscription(APIView):
                     'save_default_payment_method': 'on_subscription'
                 },
                 collection_method='charge_automatically',  # Explicitly set
-                off_session=False  # Ensure immediate payment
+                off_session=False,  # Ensure immediate payment
+                metadata={
+                     "domain":current_service     # ? include domain
+                }
             )
 
             # 3. Verify and extract payment intent
@@ -65,7 +75,8 @@ class CreateSubscription(APIView):
                     payment_method_types=['card'],
                     metadata={
                         'subscription_id': subscription.id,
-                        'invoice_id': subscription.latest_invoice.id
+                        'invoice_id': subscription.latest_invoice.id,
+                         "domain": current_service 
                     }
                 )
                 client_secret = payment_intent.client_secret
@@ -134,6 +145,9 @@ class UpgradeSubscriptionAPIView(APIView):
             new_package_id = request.data.get('new_package_id')
             new_package = Package.objects.get(id=new_package_id)
             subscription = UserSubscription.objects.get(user=user)
+            
+            current_service = get_current_service()
+            print("current service is ",current_service, "current service ---------------")
 
             if new_package.id == subscription.package.id:
                 return Response({'error': 'You already have this package.'}, status=400)
@@ -161,7 +175,8 @@ class UpgradeSubscriptionAPIView(APIView):
                 metadata={
                     'user_id': user.id,
                     'upgrade_to': new_package.id,
-                    'action': 'upgrade'
+                    'action': 'upgrade',
+                    "domain": current_service
                 }
             )
 
@@ -198,6 +213,16 @@ def stripe_webhook(request):
         return HttpResponse(status=400)
 
     print("🔔 Webhook received: ", event['type'])
+    
+    data_object = event['data']['object']
+    metadata = data_object.get('metadata', {})
+    domain = metadata.get('domain', 'seo') 
+
+    
+    from SEO_Automation.db_router import set_current_service
+    set_current_service(domain)
+
+    print(f"?? [{domain.upper()}] Webhook received: {event['type']}")
 
     # Handle payment success
     if event['type'] == 'payment_intent.succeeded':
@@ -254,6 +279,15 @@ def stripe_webhook(request):
     if event['type'] == 'invoice.paid':
         invoice = event['data']['object']
         subscription_id = invoice['subscription']
+        
+        try:
+          stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+          domain = stripe_subscription.metadata.get('domain', 'seo')
+          set_current_service(domain)
+          print(f"?? [{domain.upper()}] Invoice paid for subscription: {subscription_id}")
+        except Exception as e:
+          print(f"?? Could not fetch subscription metadata: {e}")
+
 
         try:
             user_subscription = UserSubscription.objects.get(stripe_subscription_id=subscription_id)
@@ -266,6 +300,14 @@ def stripe_webhook(request):
     if event['type'] == 'invoice.payment_failed':
         invoice = event['data']['object']
         subscription_id = invoice['subscription']
+        
+        try:
+          stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+          domain = stripe_subscription.metadata.get('domain', 'seo')
+          set_current_service(domain)
+          print(f"?? [{domain.upper()}] Invoice payment failed for subscription: {subscription_id}")
+        except Exception as e:
+            print(f"?? Could not fetch subscription metadata: {e}")
 
         try:
             user_subscription = UserSubscription.objects.get(stripe_subscription_id=subscription_id)
