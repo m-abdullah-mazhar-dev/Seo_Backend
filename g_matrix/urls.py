@@ -21,4 +21,10 @@ urlpatterns = [
 
     path("test-ga-callback/", TemplateView.as_view(template_name="g_metrix/test_ga_callback.html")),
     path("test-search-callback/", TemplateView.as_view(template_name="g_metrix/test_search_callback.html")),
+
+
+    path('reviews/fetch/', GetReviewsView.as_view(), name='fetch_reviews'),
+    path('reviews/auto-respond/', AutomatedReviewResponseView.as_view(), name='auto_respond'),
+    path('profiles/sync/', SyncBusinessProfilesView.as_view(), name='sync_profiles'),
+
 ]
