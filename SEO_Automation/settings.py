@@ -247,6 +247,7 @@ STRIPE_WEBHOOK_SECRET = 'whsec_e7c846c5dab294c1efb3d832ee1c8550dd13c23782ca25c70
 ALLOWED_HOSTS = ['*']
 # AI_API_DOMAIN = "http://51.21.149.16:5000"
 AI_API_DOMAIN = "https://aiapi.appseospider.com"
+AI_API_TIMEOUT = 30
 # AI_API_DOMAIN = "http://127.0.0.1:5000"
 
 
@@ -356,7 +357,8 @@ GOOGLE_ANALYTICS_REDIRECT_URI = "http://3.85.12.252:3000/analytic-auth"
 GOOGLE_ANALYTICS_REDIRECT_URI_TRUCKING = "http://18.212.222.19:3000/analytic-auth"
 
 GOOGLE_BUSINESS_REDIRECT_URI = "http://127.0.0.1:8000/google-business/profile/auth/callback/"
-GOOGLE_BUSINESS_USE_MOCK = DEBUG
+# GOOGLE_BUSINESS_USE_MOCK = DEBUG
+GOOGLE_BUSINESS_USE_MOCK = True
 
 
 # settings.py

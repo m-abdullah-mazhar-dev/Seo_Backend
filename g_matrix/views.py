@@ -883,6 +883,120 @@ class ListBusinessesView(APIView):
         service = build('mybusinessaccountmanagement', 'v1', credentials=creds)
         accounts = service.accounts().list().execute()
         return Response(accounts)
+# views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .review_fetcher import ReviewFetcher
+from .ai_response_service import AIResponseService
+from .gbp_poster import GBPResponsePoster
+from django.conf import settings
 
+class GetReviewsView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Fetch and return reviews - mock or live based on settings"""
+        mode = "mock" if settings.GOOGLE_BUSINESS_USE_MOCK else "live"
+        print(f"🔄 Fetching reviews in {mode.upper()} mode...")
+        
+        review_fetcher = ReviewFetcher(request.user)
+        reviews = review_fetcher.fetch_reviews()
+        
+        return Response({
+            "message": f"Reviews fetched successfully in {mode} mode",
+            "count": len(reviews),
+            "reviews": reviews,
+            "mode": mode
+        })
 
+class AutomatedReviewResponseView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """
+        Complete automated review response flow:
+        1. Fetch reviews (mock/live based on settings)
+        2. Send to AI API for response generation  
+        3. Post responses back to GBP (mock/live based on settings)
+        """
+        mode = "mock" if settings.GOOGLE_BUSINESS_USE_MOCK else "live"
+        print(f"🔄 Starting COMPLETE automated review response flow in {mode.upper()} mode...")
+        
+        # Step 1: Fetch reviews from ALL business profiles
+        print("1. Fetching reviews...")
+        review_fetcher = ReviewFetcher(request.user)
+        reviews = review_fetcher.fetch_reviews()
+        print(f"   ✅ Found {len(reviews)} reviews from all business profiles")
+        
+        if not reviews:
+            return Response({
+                "message": "No reviews found to process",
+                "reviews_fetched": 0,
+                "ai_responses_generated": 0,
+                "responses_posted": 0,
+                "mode": mode
+            })
+        
+        # Step 2: Generate AI responses
+        print("2. Generating AI responses...")
+        ai_service = AIResponseService()
+        ai_responses = ai_service.generate_responses(reviews)
+        print(f"   ✅ Generated {len(ai_responses)} AI responses")
+        
+        # Step 3: Post responses back to GBP
+        print("3. Posting responses back to GBP...")
+        gbp_poster = GBPResponsePoster(request.user)
+        posting_results = gbp_poster.post_responses(ai_responses, reviews)
+        print(f"   ✅ Posted {len(posting_results)} responses back to GBP")
+        
+        # Calculate success rate
+        successful_posts = [r for r in posting_results if r['success']]
+        failed_posts = [r for r in posting_results if not r['success']]
+        
+        # Step 4: Return complete results
+        response_data = {
+            "message": f"Complete automated review response process finished in {mode} mode",
+            "mode": mode,
+            "reviews_fetched": len(reviews),
+            "ai_responses_generated": len(ai_responses),
+            "responses_posted": len(successful_posts),
+            "success_rate": f"{len(successful_posts)}/{len(posting_results)}",
+            "posting_results": {
+                "successful": successful_posts[:3],  # First 3 successful
+                "failed": failed_posts[:3]  # First 3 failed
+            },
+            "sample_ai_responses": ai_responses[:2]  # First 2 AI responses
+        }
+        
+        print(f"✅ Flow completed successfully in {mode.upper()} mode!")
+        print(f"   📊 Stats: {len(reviews)} reviews → {len(ai_responses)} AI responses → {len(successful_posts)} posted")
+        
+        return Response(response_data)
 
+class SyncBusinessProfilesView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """Sync user's business profiles from GBP"""
+        mode = "mock" if settings.GOOGLE_BUSINESS_USE_MOCK else "live"
+        print(f"🔄 Syncing business profiles in {mode.upper()} mode...")
+        
+        review_fetcher = ReviewFetcher(request.user)
+        
+        if settings.GOOGLE_BUSINESS_USE_MOCK:
+            # Just create mock profile
+            review_fetcher._create_mock_business_profile()
+            profiles = [{"name": "Mock Business Profile", "mode": "mock"}]
+        else:
+            # Sync real profiles by fetching reviews (which creates profiles)
+            reviews = review_fetcher.fetch_reviews()
+            from .models import BusinessProfile
+            profiles = BusinessProfile.objects.filter(user=request.user)
+            profiles = [{"name": p.location_name, "mode": "live"} for p in profiles]
+        
+        return Response({
+            "message": f"Business profiles synced in {mode} mode",
+            "profiles": profiles,
+            "mode": mode
+        })
