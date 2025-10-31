@@ -4130,3 +4130,92 @@ def get_all_customers(request):
             'message': 'Server error',
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -------------------------------
+# CUSTOMER UPDATE / DELETE
+# -------------------------------
+@api_view(['PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def customer_detail(request, customer_id):
+    """
+    PUT / PATCH / DELETE - Single Customer ke liye
+    """
+    try:
+        customer = Customer.objects.filter(id=customer_id, user=request.user).first()
+        if not customer:
+            return Response({
+                'success': False,
+                'message': 'Customer not found or access denied'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # DELETE
+        if request.method == 'DELETE':
+            customer.delete()
+            return Response({
+                'success': True,
+                'message': f'Customer {customer_id} deleted successfully'
+            }, status=status.HTTP_200_OK)
+
+        # UPDATE (Full or Partial)
+        data = request.data
+        if request.method == 'PUT':
+            # Full update (all fields required)
+            customer.name = data.get('name', customer.name)
+            customer.email = data.get('email', customer.email)
+            customer.contact = data.get('contact', customer.contact)
+        elif request.method == 'PATCH':
+            # Partial update (only sent fields)
+            if 'name' in data:
+                customer.name = data['name']
+            if 'email' in data:
+                customer.email = data['email']
+            if 'contact' in data:
+                customer.contact = data['contact']
+
+        customer.save()
+
+        return Response({
+            'success': True,
+            'message': 'Customer updated successfully',
+            'data': CustomerSerializer(customer).data
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': 'Server error',
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_multiple_customers(request):
+    """
+    DELETE - Bulk delete customers
+    {
+        "ids": [1, 2, 3]
+    }
+    """
+    try:
+        ids = request.data.get('ids', [])
+        if not ids:
+            return Response({
+                'success': False,
+                'message': 'No customer IDs provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        deleted, _ = Customer.objects.filter(id__in=ids, user=request.user).delete()
+        return Response({
+            'success': True,
+            'message': f'{deleted} customers deleted successfully'
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': 'Server error',
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
